@@ -1,5 +1,45 @@
 **Unreleased**
 
+## 1.0.0 (2026-08-25, later still — clean reset, new appid)
+
+User decision: rather than carry the 1.0.x history/appid across to the
+airgapped instance a third time, reset to a fresh `appid`
+(`71a7abcc-75fa-4a8d-ae9d-23fb352869e4`, replaces
+`414f081c-261b-4eea-a04c-2edf9135c637`) and `version 1.0.0`. This is a
+**new app to SOAR, not an in-place upgrade** — the old `414f081c...` app
+(soar8 id 204, and whatever is live on the airgapped instance) will NOT be
+replaced automatically and should be deleted by hand on both sides to avoid
+two `efficientip_ddi` entries coexisting. Functionally identical to 1.0.8:
+same NFR-09 wheel-drop fix (requests/urllib3/certifi/idna/charset-normalizer/
+beautifulsoup4/soupsieve hand-patched back into wheels/shared/), same 5
+actions. Re-verify from scratch under the new appid before shipping (see
+next-steps.md).
+
+## 1.0.8 (2026-08-25, later still — real root cause of the airgapped "action not found")
+
+- The NFR-09 `soarapps package build` wheel-drop bug (first found and hand-fixed
+  at 1.0.1, believed fixed) had silently **regressed on every rebuild since**
+  (1.0.4 through 1.0.7) — nobody re-ran the clean-room wheel check after those
+  rebuilds, so `requests`/`urllib3`/`certifi`/`idna`/`charset-normalizer`/
+  `beautifulsoup4`/`soupsieve` were missing from every `.tgz` shipped since
+  1.0.3, including the one actually carried across the air gap twice. Confirmed
+  directly on soar8 itself, not just inferred: `GET /rest/app/204` showed
+  `actions: []` for the live v1.0.7 install — the app failed to import
+  (`ModuleNotFoundError: requests`) so SOAR never registered any actions,
+  which is exactly the "action test connectivity not found" symptom reported
+  from the real airgapped appliance.
+- Hand-patched wheels back in (same 7 packages as 1.0.1) and re-verified via a
+  from-scratch clean-room venv (`uv pip install --no-index`, only the
+  manifest-declared wheels, then a real `import src.app`) — confirmed clean.
+- Reinstalled on soar8 (app id 204): `GET /rest/app/204` now shows all 5
+  actions registered (`test connectivity`, `get ip address`, `list subnets`,
+  `get ip pool`, `list aliases`). Live-verified on soar8, not yet
+  re-deployed to the real airgapped instance — that still needs a fresh
+  carry-across with this version.
+- Root process gap, not yet fixed: nothing enforces the clean-room wheel
+  check on every rebuild, only the humans remembering to. Needs a scripted
+  gate (see next-steps) before this bites a third time.
+
 ## 1.0.7 (2026-08-25, code-review fixes)
 
 - Fixed unescaped user input in `list subnets`/`get ip pool`'s `WHERE`

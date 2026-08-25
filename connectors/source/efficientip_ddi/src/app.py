@@ -12,52 +12,44 @@ called directly. Three auth layers stack on every request:
      call directly, nothing to cache or refresh.
   3. `X-DDI-Username` / `X-DDI-Password` headers — forwarded by APIM to
      SOLIDserver's own backend auth. Each value is base64-encoded
-     independently (not combined like the Basic-auth layer) — confirmed
-     against the real APIM via curl (2026-08-25).
+     independently, not combined like the Basic-auth layer — vendor-confirmed
+     real-APIM behavior, not a guess.
 
 Built and tested against `soar8/migration/mock-backend/mock_efficientip_ddi.py`
-(:8447, mirrored into `soar8/soar-connectors/test/`), updated to match the
-real APIM's confirmed per-value base64 encoding for the DDI header layer.
+(:8447, mirrored into `soar8/soar-connectors/test/`), which matches the same
+per-value base64 encoding for the DDI header layer.
 
-Endpoint paths were rewritten (2026-08-25) to match SOLIDserver's real
-classic REST API convention — flat service names under `/rest/{service}`,
-filtered via a `WHERE=<field>='<value>'` query param — confirmed against
-public EfficientIP client sources (Ruby/Go SDKs), and structurally
-confirmed against this org's real APIM: the user has directly observed
-`/rest/ip_address_list`, `/rest/ip_alias_list/ip_id/{ip_id}`,
-`/rest/dns_zone_list`, `/rest/ip_pool_list`, `/rest/ip_block_subnet_list`
-on the real system. `get dns record` was **removed** (2026-08-25, later) —
-only zone-level `dns_zone_list` is confirmed to exist, no record-level
-service (`dns_rr_list` was this project's own inference from public docs,
-never actually seen on the real APIM); rebuilding it needs a real
-record-level endpoint identified first. `test_connectivity` now calls
-`/rest/ip_block_subnet_list` bare (no params) — the one confirmed-real
-endpoint that needs no filter, sidestepping the open question below.
+Endpoints follow SOLIDserver's classic REST API convention — flat service
+names under `/rest/{service}`, filtered via a `WHERE=<field>='<value>'` query
+param. `/rest/ip_address_list`, `/rest/ip_alias_list/ip_id/{ip_id}`,
+`/rest/dns_zone_list`, `/rest/ip_pool_list`, and `/rest/ip_block_subnet_list`
+are vendor-confirmed to exist on the real APIM. There is no record-level DNS
+service — only zone-level `dns_zone_list` — so `get dns record` is not
+implemented; a prior `dns_rr_list`-based attempt was this project's own
+inference from public docs and was never seen on the real system. Rebuild
+that action only once a real record-level endpoint is identified.
+`test_connectivity` calls `/rest/ip_block_subnet_list` bare (no params) since
+that's the one confirmed-real endpoint that needs no filter.
 
-2026-08-25 (later): the user confirmed `WHERE` is a real, **required**
-parameter on `ip_address_list` (not optional, and not a guess) — settling
-the open question above in favor of `WHERE=` over `ip_alias_list`'s
-path-parameter style, which is a "list children of a known ip_id"
-sub-resource shortcut, not the general list-filtering convention.
-`ip_pool_list`/`ip_block_subnet_list` take `WHERE` as *optional*, matching
-why `test_connectivity` can call the latter bare. Three more actions added
-on this basis: `list subnets` (`ip_block_subnet_list`, filtered by
-`subnet_name`), `get ip pool` (`ip_pool_list`, filtered by `pool_name`),
-and `list aliases` (`ip_alias_list/ip_id/{ip_id}`, chained off
-`get_ip_address`'s new `ip_id` output field). Output field names
+`WHERE` is a real, **required** parameter on `ip_address_list` — not optional,
+and not a guess — which is why filtering here uses query-string `WHERE=` and
+not `ip_alias_list`'s path-parameter style (that's a "list children of a known
+ip_id" sub-resource shortcut, not the general list-filtering convention).
+`ip_pool_list`/`ip_block_subnet_list` take `WHERE` as *optional*, matching why
+`test_connectivity` can call the latter bare. Output field names
 (`subnet_name`, `site_name`, `mac_addr`, `ip_class_name`,
-`ip_class_parameters`, `ip_id`, `ip_alias`) are the vendor's real field
-names for `ip_address_list`, confirmed via public client docs;
-`description` is extracted from the `ip_class_parameters` custom-attribute
-blob, not a dedicated field. **`ip_pool_list`'s and `ip_alias_list`'s own
-field sets are NOT independently vendor-confirmed** — field names there are
-inferred by analogy to `ip_address_list`'s conventions, so both actions
-carry a `raw_json` fallback field; check it if a named field comes back
-empty. `ddi_user`/`ddi_pwd` appearing in the user's endpoint-parameter docs
-for every service is confirmed (2026-08-25) to mean DDI auth context is
-required, already satisfied by the `X-DDI-Username`/`X-DDI-Password`
-headers — not literal query parameters this connector needs to add. IPv6
-filtering is unconfirmed (hex-encoding is only vendor-confirmed for IPv4).
+`ip_class_parameters`, `ip_id`, `ip_alias`) are the vendor's real field names
+for `ip_address_list`, confirmed via public client docs; `description` is
+extracted from the `ip_class_parameters` custom-attribute blob, not a
+dedicated field. **`ip_pool_list`'s and `ip_alias_list`'s own field sets are
+NOT independently vendor-confirmed** — field names there are inferred by
+analogy to `ip_address_list`'s conventions, so both actions carry a
+`raw_json` fallback field; check it if a named field comes back empty.
+`ddi_user`/`ddi_pwd` appearing in the vendor's endpoint-parameter docs for
+every service means DDI auth context is required, already satisfied by the
+`X-DDI-Username`/`X-DDI-Password` headers — not literal query parameters
+this connector needs to add. IPv6 filtering is unconfirmed (hex-encoding is
+only vendor-confirmed for IPv4).
 """
 
 import base64
@@ -375,9 +367,9 @@ def get_ip_address(
     )
 
 
-# "get dns record" was removed 2026-08-25 — no record-level DNS service was ever
-# confirmed on the real APIM (only zone-level dns_zone_list); dns_rr_list was
-# this project's own inference from public client docs, never actually observed.
+# "get dns record" is not implemented — no record-level DNS service exists on
+# the real APIM (only zone-level dns_zone_list); dns_rr_list was this
+# project's own inference from public client docs, never actually observed.
 # Rebuild only once a real record-level endpoint is identified.
 
 

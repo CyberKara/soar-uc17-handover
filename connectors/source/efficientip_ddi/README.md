@@ -1,16 +1,37 @@
 # efficientip_ddi — EfficientIP SOLIDserver via APIM (SOAR SDK)
 
-Splunk SOAR SDK app for analyst-driven IP/DNS lookup enrichment against an
+Splunk SOAR SDK app for analyst-driven IP lookup enrichment against an
 EfficientIP SOLIDserver DDI (DNS/DHCP/IPAM) backend that is reached through
 an APIM gateway rather than called directly.
 
-Endpoint paths and response shapes (`/ddi/ip_address`, `/ddi/dns_record`)
-are this project's own invention, not vendor-confirmed — the DDI header
-auth encoding below **is** confirmed against the real APIM (curl,
-2026-08-25). Reconcile the endpoint/response contract against the real
-SOLIDserver REST API before pointing this at production. Playbook design
-that consumes this connector's actions hasn't been done yet — this
-connector is a prerequisite step, built first per user request.
+The DDI header auth encoding is confirmed against the real APIM (curl,
+2026-08-25). Endpoint paths (2026-08-25 rewrite) follow SOLIDserver's real
+classic REST API convention — flat service names under `/rest/`,
+`WHERE=<field>='<value>'` filtering, IP addresses filtered as hex not
+dotted-decimal — sourced from public EfficientIP client code (Ruby/Go
+SDKs). **Structurally confirmed** against this org's real APIM: the user
+has directly observed `/rest/ip_address_list`, `/rest/ip_alias_list/ip_id/
+{ip_id}`, `/rest/dns_zone_list`, `/rest/ip_pool_list`, and
+`/rest/ip_block_subnet_list` on the real system. **`get dns record` was
+removed** (2026-08-25, later) — only zone-level `dns_zone_list` is
+confirmed to exist; there's no confirmed record-level DNS service, and
+`dns_rr_list` was this project's own inference from public docs, never
+actually observed on the real APIM. Rebuild it only once a real
+record-level endpoint is identified. **Resolved (2026-08-25, later):**
+`WHERE` is confirmed real and **required** on `ip_address_list` — settling
+the earlier open question in favor of query-string filtering over
+`ip_alias_list`'s path-parameter style, which is a
+"list-children-of-a-known-parent" shortcut, not the general list-filtering
+convention. `ip_pool_list`/`ip_block_subnet_list` take `WHERE` as
+*optional*. Three more actions added on this basis (`list subnets`,
+`get ip pool`, `list aliases`) — see Actions below; the latter two carry a
+`raw_json` fallback field since their own field sets aren't independently
+vendor-confirmed the way `ip_address_list`'s are. Still open: whether the
+APIM proxies `/rest/*` verbatim or under its own prefix (fold that into
+`base_url` if so), and IPv6 filtering (hex-encoding is only
+vendor-confirmed for IPv4). Playbook design that consumes this connector's
+actions hasn't been done yet — this connector is a prerequisite step,
+built first per user request.
 
 ______________________________________________________________________
 
@@ -33,9 +54,11 @@ ______________________________________________________________________
 
 | Action | Type | Params | Output |
 |---|---|---|---|
-| `test connectivity` | test | — | pass/fail (`GET /ddi/health`) |
-| `get ip address` | investigate | `address` | `address`, `subnet`, `space`, `status`, `hostname`, `mac_address`, `ddi_class`, `description` |
-| `get dns record` | investigate | `name` | `name`, `record_type`, `value`, `zone`, `ttl` |
+| `test connectivity` | test | — | pass/fail (`GET /rest/ip_block_subnet_list`, bare) |
+| `get ip address` | investigate | `address` | `address`, `ip_id`, `subnet`, `space`, `status`, `hostname`, `mac_address`, `ddi_class`, `description` (via `GET /rest/ip_address_list?WHERE=ip_addr='<hex>'`) |
+| `list subnets` | investigate | `name` | `subnet_id`, `subnet_name`, `parent_subnet`, `space`, `start_address`, `end_address`, `size`, `ddi_class`, `description` (via `GET /rest/ip_block_subnet_list?WHERE=subnet_name='<name>'`) |
+| `get ip pool` | investigate | `name` | `pool_id`, `pool_name`, `subnet`, `space`, `start_address`, `end_address`, `ddi_class`, `description`, `raw_json` (via `GET /rest/ip_pool_list?WHERE=pool_name='<name>'` — field names inferred, not vendor-confirmed) |
+| `list aliases` | investigate | `ip_id` (int, from `get ip address`) | `ip_id`, `alias_name`, `raw_json` (via `GET /rest/ip_alias_list/ip_id/{ip_id}` — field names inferred, not vendor-confirmed) |
 
 ## Asset configuration
 
@@ -74,10 +97,23 @@ values (see `mock_efficientip_ddi.py`'s own docstring).
 
 Verified locally 2026-08-24 via direct `curl --cert/--key` against the live
 mock: mTLS-required handshake rejection, missing-Basic-Auth 401, full
-3-layer auth success on `/ddi/health`, `/ddi/ip_address`, and
-`/ddi/dns_record`, and a 404 not-found path. **Not yet verified:** the
-connector module itself against a real `splunk-soar-sdk` package in a
-scratch venv (see `itsm_generic`'s README for that pattern — SDK
-`@app.action`-decorated functions can't be called directly, only their
-undecorated helpers), a `soarapps package build`, or any install/action-run
-on soar8. Do all three before relying on this in a real playbook run.
+3-layer auth success, and a 404 not-found path (pre-rewrite, against the
+original invented `/ddi/*` paths — mock updated 2026-08-25 to the current
+`/rest/ip_address_list` / `/rest/dns_rr_list` convention, not yet
+re-verified end-to-end since).
+
+**2026-08-25 status:** installed live on soar8 (app id 204, `app_version`
+1.0.5). First real airgapped `test_connectivity` run against the actual
+APIM failed with "not found" — root cause: the original `/ddi/health` path
+doesn't exist on the real backend, it was never more than a placeholder
+for the mock. Endpoints rewritten to SOLIDserver's real REST convention;
+the user then supplied several endpoint paths they've directly observed on
+the real APIM, confirming `/rest/ip_address_list` and
+`/rest/ip_block_subnet_list` structurally and ruling out a confirmed
+record-level DNS service (only `dns_zone_list` seen — `get dns record`
+removed as a result). `test_connectivity` now targets
+`ip_block_subnet_list` bare, the safest of the confirmed-real endpoints.
+**Still not fully verified:** whether `get_ip_address`'s `WHERE=` filter
+actually works on the real APIM (vs. the path-parameter style seen on
+`ip_alias_list`), and whether `/rest/*` is proxied verbatim or under a
+prefix. Re-test against the real airgapped system.

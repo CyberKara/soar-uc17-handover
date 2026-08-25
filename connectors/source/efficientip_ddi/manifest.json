@@ -4,7 +4,7 @@
     "appid": "414f081c-261b-4eea-a04c-2edf9135c637",
     "type": "ddi",
     "product_vendor": "EfficientIP",
-    "app_version": "1.0.3",
+    "app_version": "1.0.7",
     "license": "Copyright (c) 2026 Karabox Labs.",
     "min_phantom_version": "7.0.0",
     "package_name": "phantom_efficientip_ddi",
@@ -15,7 +15,7 @@
     "python_version": "3.13",
     "product_version_regex": ".*",
     "publisher": "Ted",
-    "utctime_updated": "2026-08-25T09:24:16.833491Z",
+    "utctime_updated": "2026-08-25T13:56:24.020741Z",
     "fips_compliant": false,
     "contributors": [],
     "configuration": {
@@ -174,6 +174,10 @@
                     ]
                 },
                 {
+                    "data_path": "action_result.data.*.ip_id",
+                    "data_type": "string"
+                },
+                {
                     "data_path": "action_result.data.*.subnet",
                     "data_type": "string"
                 },
@@ -224,9 +228,9 @@
             ]
         },
         {
-            "action": "get dns record",
-            "identifier": "get_dns_record",
-            "description": "Look up a DNS record (A/CNAME/etc.) in SOLIDserver by hostname/FQDN for enrichment.",
+            "action": "list subnets",
+            "identifier": "list_subnets",
+            "description": "Look up a subnet in SOLIDserver's IPAM by name (parent, space, address range, size, class) for enrichment. Output field names follow ip_address_list's confirmed subnet_* conventions but ip_block_subnet_list's own field set is not independently vendor-confirmed.",
             "type": "investigate",
             "read_only": true,
             "versions": "EQ(*)",
@@ -235,15 +239,11 @@
                 "name": {
                     "order": 0,
                     "name": "name",
-                    "description": "Hostname/FQDN to look up.",
+                    "description": "Subnet name to look up in SOLIDserver's IPAM (e.g. '10.20.30.0/24').",
                     "data_type": "string",
                     "required": true,
                     "primary": false,
-                    "allow_list": false,
-                    "contains": [
-                        "host name",
-                        "domain"
-                    ]
+                    "allow_list": false
                 }
             },
             "output": [
@@ -261,38 +261,210 @@
                 },
                 {
                     "data_path": "action_result.parameter.name",
-                    "data_type": "string",
-                    "contains": [
-                        "host name",
-                        "domain"
-                    ]
-                },
-                {
-                    "data_path": "action_result.data.*.name",
-                    "data_type": "string",
-                    "contains": [
-                        "host name",
-                        "domain"
-                    ]
-                },
-                {
-                    "data_path": "action_result.data.*.record_type",
                     "data_type": "string"
                 },
                 {
-                    "data_path": "action_result.data.*.value",
+                    "data_path": "action_result.data.*.subnet_id",
                     "data_type": "string"
                 },
                 {
-                    "data_path": "action_result.data.*.zone",
+                    "data_path": "action_result.data.*.subnet_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.parent_subnet",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.space",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.start_address",
                     "data_type": "string",
                     "contains": [
-                        "domain"
+                        "ip"
                     ]
                 },
                 {
-                    "data_path": "action_result.data.*.ttl",
+                    "data_path": "action_result.data.*.end_address",
+                    "data_type": "string",
+                    "contains": [
+                        "ip"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.size",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.ddi_class",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.description",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                }
+            ]
+        },
+        {
+            "action": "get ip pool",
+            "identifier": "get_ip_pool",
+            "description": "Look up an IP pool in SOLIDserver's IPAM by name for enrichment. Field names are inferred by analogy to ip_address_list's confirmed conventions, NOT independently vendor-confirmed \u2014 check raw_json if a named field comes back empty.",
+            "type": "investigate",
+            "read_only": true,
+            "versions": "EQ(*)",
+            "verbose": "",
+            "parameters": {
+                "name": {
+                    "order": 0,
+                    "name": "name",
+                    "description": "Pool name to look up in SOLIDserver's IPAM.",
+                    "data_type": "string",
+                    "required": true,
+                    "primary": false,
+                    "allow_list": false
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failure"
+                    ]
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.pool_id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.pool_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.subnet",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.space",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.start_address",
+                    "data_type": "string",
+                    "contains": [
+                        "ip"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.end_address",
+                    "data_type": "string",
+                    "contains": [
+                        "ip"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.ddi_class",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.description",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.raw_json",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                }
+            ]
+        },
+        {
+            "action": "list aliases",
+            "identifier": "list_aliases",
+            "description": "List DNS aliases for a known SOLIDserver ip_id (chain off 'get ip address' output). Field names are inferred, NOT independently vendor-confirmed \u2014 check raw_json if alias_name comes back empty.",
+            "type": "investigate",
+            "read_only": true,
+            "versions": "EQ(*)",
+            "verbose": "",
+            "parameters": {
+                "ip_id": {
+                    "order": 0,
+                    "name": "ip_id",
+                    "description": "Internal SOLIDserver ip_id of the address to list aliases for (from 'get ip address' output).",
+                    "data_type": "numeric",
+                    "required": true,
+                    "primary": false,
+                    "allow_list": false
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failure"
+                    ]
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.ip_id",
                     "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.ip_id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.alias_name",
+                    "data_type": "string",
+                    "contains": [
+                        "host name"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.raw_json",
+                    "data_type": "string"
                 },
                 {
                     "data_path": "summary.total_objects",

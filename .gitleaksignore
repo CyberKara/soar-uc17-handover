@@ -1,0 +1,7 @@
+# False positive: _normalize_pem() in efficientip_ddi_classic_connector.py
+# lists PEM header/footer marker strings (CERTIFICATE, PRIVATE KEY, RSA/EC
+# PRIVATE KEY) to detect and normalize pasted cert/key blocks — same pattern
+# as cyberark_ccp's own _normalize_pem(). No actual key material is present —
+# gitleaks' private-key rule is a literal string match with no code-semantics
+# awareness. Verified by reading the surrounding function.
+connectors/source/efficientip_ddi_classic/efficientip_ddi_classic_connector.py:private-key:402

@@ -1,5 +1,29 @@
 **Unreleased**
 
+## 1.0.1 (2026-08-25, later still — field-name fixes against real vendor docs)
+
+Cross-referenced every action's field mapping against SOLIDserver's own
+public REST method reference (`solidserverrest` project docs, v9.0.1a —
+not just SDK-inferred field names) and found 3 real bugs that the mock had
+been silently masking (mock was seeded with the same wrong names, so
+everything "passed" against it):
+
+- `get ip address`: hostname field is `name`, not `hostdev_name`
+  (`hostdev_name` isn't a real `ip_address_list` field at all).
+- `get ip pool`: address-range fields are `start_hostaddr`/`end_hostaddr`,
+  not `pool_start_hostaddr`/`pool_end_hostaddr` (also not real fields).
+- `list aliases`: the alias name field is `alias_name`, not `ip_alias`
+  (`ip_alias` is real, but it's an `ip_address_list` field, not an
+  `ip_alias_list` one).
+
+Also added a `raw_json` fallback to `list subnets` (previously the only
+record-returning action without one) since `ip_block_subnet_list`'s own
+field set still isn't independently confirmed against this org's real
+APIM — the public docs only cover a differently-named `ip_subnet_list`.
+Mock server (both copies) updated to match the corrected field names, not
+just to keep passing — see its own docstring for the same 3 fixes.
+Real airgapped retest still owed; nothing here has touched the actual APIM.
+
 ## 1.0.0 (2026-08-25, later still — clean reset, new appid)
 
 User decision: rather than carry the 1.0.x history/appid across to the

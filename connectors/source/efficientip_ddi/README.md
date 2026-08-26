@@ -56,7 +56,7 @@ ______________________________________________________________________
 |---|---|---|---|
 | `test connectivity` | test | — | pass/fail (`GET /rest/ip_block_subnet_list`, bare) |
 | `get ip address` | investigate | `address` | `address`, `ip_id`, `subnet`, `space`, `status`, `hostname`, `mac_address`, `ddi_class`, `description` (via `GET /rest/ip_address_list?WHERE=ip_addr='<hex>'`) |
-| `list subnets` | investigate | `name` | `subnet_id`, `subnet_name`, `parent_subnet`, `space`, `start_address`, `end_address`, `size`, `ddi_class`, `description` (via `GET /rest/ip_block_subnet_list?WHERE=subnet_name='<name>'`) |
+| `list subnets` | investigate | `name` | `subnet_id`, `subnet_name`, `parent_subnet`, `space`, `start_address`, `end_address`, `size`, `ddi_class`, `description`, `raw_json` (via `GET /rest/ip_block_subnet_list?WHERE=subnet_name='<name>'` — field names inferred, not vendor-confirmed) |
 | `get ip pool` | investigate | `name` | `pool_id`, `pool_name`, `subnet`, `space`, `start_address`, `end_address`, `ddi_class`, `description`, `raw_json` (via `GET /rest/ip_pool_list?WHERE=pool_name='<name>'` — field names inferred, not vendor-confirmed) |
 | `list aliases` | investigate | `ip_id` (int, from `get ip address`) | `ip_id`, `alias_name`, `raw_json` (via `GET /rest/ip_alias_list/ip_id/{ip_id}` — field names inferred, not vendor-confirmed) |
 
@@ -102,18 +102,64 @@ original invented `/ddi/*` paths — mock updated 2026-08-25 to the current
 `/rest/ip_address_list` / `/rest/dns_rr_list` convention, not yet
 re-verified end-to-end since).
 
-**2026-08-25 status:** installed live on soar8 (app id 204, `app_version`
-1.0.5). First real airgapped `test_connectivity` run against the actual
-APIM failed with "not found" — root cause: the original `/ddi/health` path
-doesn't exist on the real backend, it was never more than a placeholder
-for the mock. Endpoints rewritten to SOLIDserver's real REST convention;
-the user then supplied several endpoint paths they've directly observed on
-the real APIM, confirming `/rest/ip_address_list` and
-`/rest/ip_block_subnet_list` structurally and ruling out a confirmed
-record-level DNS service (only `dns_zone_list` seen — `get dns record`
-removed as a result). `test_connectivity` now targets
-`ip_block_subnet_list` bare, the safest of the confirmed-real endpoints.
-**Still not fully verified:** whether `get_ip_address`'s `WHERE=` filter
-actually works on the real APIM (vs. the path-parameter style seen on
-`ip_alias_list`), and whether `/rest/*` is proxied verbatim or under a
-prefix. Re-test against the real airgapped system.
+**2026-08-25 status (superseded, kept for history):** installed live on
+soar8 (app id 204, `app_version` 1.0.5). First real airgapped
+`test_connectivity` run against the actual APIM failed with "not found" —
+root cause at the time looked like the original `/ddi/health` path not
+existing on the real backend (it was never more than a placeholder for the
+mock). Endpoints rewritten to SOLIDserver's real REST convention; the user
+then supplied several endpoint paths they've directly observed on the real
+APIM, confirming `/rest/ip_address_list` and `/rest/ip_block_subnet_list`
+structurally and ruling out a confirmed record-level DNS service (only
+`dns_zone_list` seen — `get dns record` removed as a result).
+`test_connectivity` now targets `ip_block_subnet_list` bare, the safest of
+the confirmed-real endpoints.
+
+**2026-08-25 status (current):** the endpoint-path work above was real but
+wasn't the actual "not found" cause — `soarapps package build` was
+silently dropping `requests`+deps and `beautifulsoup4`+`soupsieve` from
+every rebuild since v1.0.3 (NFR-09 in `docs/dev-rules.md`), so the app
+never imported on an offline box and SOAR never ran it. Fixed by
+hand-patching wheels back in; per an explicit user decision, shipped as a
+**clean reset**: new `appid` **`71a7abcc-75fa-4a8d-ae9d-23fb352869e4`**
+(replaces `414f081c-...`) at **v1.0.0**, live on soar8 as **app id 205**
+(204 is deprecated, pending deletion). Mock-reachability-from-soar8 (the
+separate Ansible-side gap noted above) is now fixed. All 5 actions
+confirmed reaching the mock and completing a real mTLS+auth+HTTP
+round-trip via `POST /rest/action_run` against app 205 / asset
+`efficientip_ddi mock` (id 19) — `test connectivity` and `get ip address`
+verified against real matching seed data (genuine positive match);
+`list subnets`/`get ip pool`/`list aliases` verified via a correctly-shaped
+app-level "not found" for lookup values absent from the mock's seed data,
+not yet a confirmed positive match. **Still open:** real airgapped retest
+of this exact package — nothing here has touched the real APIM directly
+since the endpoint-path reconciliation above, and `list_subnets`/
+`get_ip_pool`/`list_aliases`'s field names remain inferred, not
+independently vendor-confirmed (see their `raw_json` fallback).
+
+**2026-08-25 status (v1.0.1, field-name fixes against real vendor docs):**
+cross-referenced every action's output-field mapping against SOLIDserver's
+own public REST method reference (`solidserverrest` project docs on
+GitLab, v9.0.1a) instead of relying only on SDK-inferred field names, and
+found 3 real bugs the mock had been silently masking (it was seeded with
+the same wrong names, so everything "passed" locally):
+
+- `get ip address`: hostname field is `name`, not `hostdev_name`
+  (`hostdev_name` isn't a real `ip_address_list` field at all).
+- `get ip pool`: address-range fields are `start_hostaddr`/`end_hostaddr`,
+  not `pool_start_hostaddr`/`pool_end_hostaddr` (also not real fields).
+- `list aliases`: the alias name field is `alias_name`, not `ip_alias`
+  (`ip_alias` is a real field, but on `ip_address_list`, not
+  `ip_alias_list`).
+
+`ip_block_subnet_list` and `ip_alias_list` are still not independently
+confirmed against this org's real APIM — the current public docs only
+cover a differently-named `ip_subnet_list`, so `list subnets`'s
+`start_address`/`end_address` mapping (`subnet_start_ip_addr`/
+`subnet_end_ip_addr`) is still an analogy to the `subnet_*`-prefixed
+fields nested inside `ip_address_list`/`ip_pool_list`, not a copy of
+`ip_subnet_list`'s own (differently-prefixed) field names — it now also
+carries a `raw_json` fallback for the same reason `get_ip_pool`/
+`list_aliases` already did. Mock server (both copies) updated to match.
+Connector `app_version` 1.0.0→1.0.1. **Still needs a real airgapped
+retest** — nothing here has touched the real APIM.

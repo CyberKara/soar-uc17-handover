@@ -1,0 +1,517 @@
+{
+    "blockly": false,
+    "blockly_xml": "<xml></xml>",
+    "category": "Investigation",
+    "coa": {
+        "data": {
+            "hash": "",
+            "edges": [
+                {
+                    "id": "port_0_to_port_2",
+                    "sourceNode": "0",
+                    "sourcePort": "0_out",
+                    "targetNode": "2",
+                    "targetPort": "2_in"
+                },
+                {
+                    "id": "port_2_to_port_3",
+                    "conditions": [
+                        {
+                            "index": 0
+                        }
+                    ],
+                    "sourceNode": "2",
+                    "sourcePort": "2_out",
+                    "targetNode": "3",
+                    "targetPort": "3_in"
+                },
+                {
+                    "id": "port_2_to_port_8",
+                    "conditions": [
+                        {
+                            "index": 1
+                        }
+                    ],
+                    "sourceNode": "2",
+                    "sourcePort": "2_out",
+                    "targetNode": "8",
+                    "targetPort": "8_in"
+                },
+                {
+                    "id": "port_8_to_port_9",
+                    "sourceNode": "8",
+                    "sourcePort": "8_out",
+                    "targetNode": "9",
+                    "targetPort": "9_in"
+                },
+                {
+                    "id": "port_9_to_port_1",
+                    "sourceNode": "9",
+                    "sourcePort": "9_out",
+                    "targetNode": "1",
+                    "targetPort": "1_in"
+                },
+                {
+                    "id": "port_3_to_port_4",
+                    "sourceNode": "3",
+                    "sourcePort": "3_out",
+                    "targetNode": "4",
+                    "targetPort": "4_in"
+                },
+                {
+                    "id": "port_4_to_port_5",
+                    "conditions": [
+                        {
+                            "index": 0
+                        }
+                    ],
+                    "sourceNode": "4",
+                    "sourcePort": "4_out",
+                    "targetNode": "5",
+                    "targetPort": "5_in"
+                },
+                {
+                    "id": "port_4_to_port_6",
+                    "conditions": [
+                        {
+                            "index": 1
+                        }
+                    ],
+                    "sourceNode": "4",
+                    "sourcePort": "4_out",
+                    "targetNode": "6",
+                    "targetPort": "6_in"
+                },
+                {
+                    "id": "port_5_to_port_6",
+                    "sourceNode": "5",
+                    "sourcePort": "5_out",
+                    "targetNode": "6",
+                    "targetPort": "6_in"
+                },
+                {
+                    "id": "port_6_to_port_7",
+                    "sourceNode": "6",
+                    "sourcePort": "6_out",
+                    "targetNode": "7",
+                    "targetPort": "7_in"
+                },
+                {
+                    "id": "port_7_to_port_1",
+                    "sourceNode": "7",
+                    "sourcePort": "7_out",
+                    "targetNode": "1",
+                    "targetPort": "1_in"
+                }
+            ],
+            "nodes": {
+                "0": {
+                    "x": 190,
+                    "y": 0,
+                    "id": "0",
+                    "data": {
+                        "id": "0",
+                        "type": "start",
+                        "advanced": {
+                            "join": []
+                        },
+                        "functionName": "on_start"
+                    },
+                    "type": "start",
+                    "errors": {}
+                },
+                "1": {
+                    "x": 190,
+                    "y": 1400,
+                    "id": "1",
+                    "data": {
+                        "id": "1",
+                        "type": "end",
+                        "advanced": {
+                            "join": []
+                        },
+                        "functionId": 1,
+                        "functionName": "on_finish"
+                    },
+                    "type": "end",
+                    "errors": {},
+                    "userCode": "\n"
+                },
+                "2": {
+                    "x": 190,
+                    "y": 100,
+                    "id": "2",
+                    "data": {
+                        "id": "2",
+                        "type": "decision",
+                        "advanced": {
+                            "join": [],
+                            "customName": "check input",
+                            "customNameId": 0
+                        },
+                        "conditions": [
+                            {
+                                "type": "if",
+                                "logic": "and",
+                                "display": "If",
+                                "customName": "ip provided",
+                                "comparisons": [
+                                    {
+                                        "op": "!=",
+                                        "param": "playbook_input:ip",
+                                        "value": "",
+                                        "conditionIndex": 0
+                                    }
+                                ],
+                                "conditionIndex": 0
+                            },
+                            {
+                                "type": "else",
+                                "logic": "and",
+                                "display": "Else",
+                                "customName": "ip missing",
+                                "comparisons": [
+                                    {
+                                        "op": "==",
+                                        "param": "",
+                                        "value": "",
+                                        "conditionIndex": 1
+                                    }
+                                ],
+                                "conditionIndex": 1
+                            }
+                        ],
+                        "functionId": 1,
+                        "functionName": "check_input"
+                    },
+                    "type": "decision",
+                    "errors": {}
+                },
+                "3": {
+                    "x": 190,
+                    "y": 250,
+                    "id": "3",
+                    "data": {
+                        "id": "3",
+                        "type": "action",
+                        "action": "get ip address",
+                        "advanced": {
+                            "join": [],
+                            "note": "Native action block calling efficientip_ddi's 'get ip address'. Input bound directly to playbook_input:ip.",
+                            "customName": "get ip address",
+                            "description": "Look up the playbook_input ip in SOLIDserver's IPAM.",
+                            "customNameId": 0
+                        },
+                        "connector": "efficientip_ddi",
+                        "actionType": "investigate",
+                        "functionId": 2,
+                        "parameters": {
+                            "address": "playbook_input:ip"
+                        },
+                        "connectorId": "71a7abcc-75fa-4a8d-ae9d-23fb352869e4",
+                        "functionName": "get_ip_address",
+                        "connectorConfigs": [
+                            "efficientip_ddi mock"
+                        ],
+                        "connectorVersion": "v1",
+                        "requiredParameters": [
+                            {
+                                "field": "address",
+                                "default": "",
+                                "data_type": "string"
+                            }
+                        ]
+                    },
+                    "type": "action",
+                    "errors": {}
+                },
+                "4": {
+                    "x": 190,
+                    "y": 400,
+                    "id": "4",
+                    "data": {
+                        "id": "4",
+                        "type": "decision",
+                        "advanced": {
+                            "join": [],
+                            "customName": "check ip found",
+                            "customNameId": 0
+                        },
+                        "conditions": [
+                            {
+                                "type": "if",
+                                "logic": "and",
+                                "display": "If",
+                                "customName": "ip_id found",
+                                "comparisons": [
+                                    {
+                                        "op": "!=",
+                                        "param": "get_ip_address:action_result.data.*.ip_id",
+                                        "value": "",
+                                        "conditionIndex": 0
+                                    }
+                                ],
+                                "conditionIndex": 0
+                            },
+                            {
+                                "type": "else",
+                                "logic": "and",
+                                "display": "Else",
+                                "customName": "ip not found",
+                                "comparisons": [
+                                    {
+                                        "op": "==",
+                                        "param": "",
+                                        "value": "",
+                                        "conditionIndex": 1
+                                    }
+                                ],
+                                "conditionIndex": 1
+                            }
+                        ],
+                        "functionId": 3,
+                        "functionName": "check_ip_found"
+                    },
+                    "type": "decision",
+                    "errors": {}
+                },
+                "5": {
+                    "x": 190,
+                    "y": 550,
+                    "id": "5",
+                    "data": {
+                        "id": "5",
+                        "type": "action",
+                        "action": "list aliases",
+                        "advanced": {
+                            "join": [],
+                            "note": "Native action block calling efficientip_ddi's 'list aliases', chained off get_ip_address's own ip_id output (not playbook_input) per the design.",
+                            "customName": "list aliases",
+                            "description": "List DNS aliases for the ip_id returned by get ip address.",
+                            "customNameId": 0
+                        },
+                        "connector": "efficientip_ddi",
+                        "actionType": "investigate",
+                        "functionId": 4,
+                        "parameters": {
+                            "ip_id": "get_ip_address:action_result.data.*.ip_id"
+                        },
+                        "connectorId": "71a7abcc-75fa-4a8d-ae9d-23fb352869e4",
+                        "functionName": "list_aliases",
+                        "connectorConfigs": [
+                            "efficientip_ddi mock"
+                        ],
+                        "connectorVersion": "v1",
+                        "requiredParameters": [
+                            {
+                                "field": "ip_id",
+                                "default": "",
+                                "data_type": "numeric"
+                            }
+                        ]
+                    },
+                    "type": "action",
+                    "errors": {}
+                },
+                "6": {
+                    "x": 190,
+                    "y": 700,
+                    "id": "6",
+                    "data": {
+                        "id": "6",
+                        "type": "format",
+                        "advanced": {
+                            "join": [],
+                            "drop_none": true,
+                            "customName": "format enrichment summary",
+                            "customNameId": 0
+                        },
+                        "template": "# EfficientIP DDI Enrichment\n\n**IP Address:** {0}\n**Lookup Status:** {1}\n**Hostname:** {2}\n**Subnet:** {3}\n**Space:** {4}\n**MAC Address:** {5}\n**Class:** {6}\n**Description:** {7}\n\n**Alias:** {8}",
+                        "functionId": 5,
+                        "parameters": [
+                            "playbook_input:ip",
+                            "get_ip_address:action_result.status",
+                            "get_ip_address:action_result.data.*.hostname",
+                            "get_ip_address:action_result.data.*.subnet",
+                            "get_ip_address:action_result.data.*.space",
+                            "get_ip_address:action_result.data.*.mac_address",
+                            "get_ip_address:action_result.data.*.ddi_class",
+                            "get_ip_address:action_result.data.*.description",
+                            "list_aliases:action_result.data.*.alias_name"
+                        ],
+                        "functionName": "format_summary"
+                    },
+                    "type": "format",
+                    "errors": {}
+                },
+                "7": {
+                    "x": 190,
+                    "y": 850,
+                    "id": "7",
+                    "data": {
+                        "id": "7",
+                        "type": "code",
+                        "advanced": {
+                            "join": [],
+                            "note": "Converges both the full (get_ip_address + list_aliases) and partial (get_ip_address only, no ip_id) paths. Reads raw action-result fields via collect2 for save_playbook_output_data, separately from format_summary's rendered note text.",
+                            "customName": "add note and save output",
+                            "description": "Write the enrichment note and expose raw fields for a parent playbook.",
+                            "customNameId": 0
+                        },
+                        "functionId": 6,
+                        "functionName": "finalize",
+                        "inputParameters": [
+                            "format_summary:formatted_data",
+                            "get_ip_address:action_result.status",
+                            "get_ip_address:action_result.data.*.ip_id",
+                            "get_ip_address:action_result.data.*.hostname",
+                            "get_ip_address:action_result.data.*.subnet",
+                            "get_ip_address:action_result.data.*.space",
+                            "get_ip_address:action_result.data.*.mac_address",
+                            "get_ip_address:action_result.data.*.ddi_class",
+                            "get_ip_address:action_result.data.*.description",
+                            "list_aliases:action_result.data.*.alias_name"
+                        ],
+                        "outputVariables": []
+                    },
+                    "type": "code",
+                    "errors": {},
+                    "userCode": "    ################################################################################\n\n    summary_note = phantom.get_format_data(name=\"format_summary\")\n\n    result = phantom.collect2(\n        container=container,\n        datapath=[\n            \"get_ip_address:action_result.status\",\n            \"get_ip_address:action_result.data.*.ip_id\",\n            \"get_ip_address:action_result.data.*.hostname\",\n            \"get_ip_address:action_result.data.*.subnet\",\n            \"get_ip_address:action_result.data.*.space\",\n            \"get_ip_address:action_result.data.*.mac_address\",\n            \"get_ip_address:action_result.data.*.ddi_class\",\n            \"get_ip_address:action_result.data.*.description\",\n        ]\n    )\n    row = result[0] if result else [None] * 8\n    status, ip_id, hostname, subnet, space, mac_address, ddi_class, description = (\n        row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]\n    )\n\n    alias_result = phantom.collect2(\n        container=container,\n        datapath=[\"list_aliases:action_result.data.*.alias_name\"]\n    )\n    alias_name = alias_result[0][0] if alias_result and alias_result[0][0] else \"\"\n\n    ip_input = phantom.collect2(container=container, datapath=[\"playbook_input:ip\"])\n    ip_address = ip_input[0][0] if ip_input and ip_input[0][0] else \"\"\n\n    output_status = \"success\" if (status == \"success\" and ip_id) else \"partial\"\n\n    phantom.add_note(\n        container=container,\n        note_type=\"general\",\n        title=\"EfficientIP DDI Enrichment\",\n        content=summary_note,\n    )\n\n    # save_playbook_output_data() is only callable from on_finish() on SOAR 8.5\n    # (RuntimeError otherwise) -- stash the output via save_run_data and let\n    # on_finish() do the actual save. See playbook-patterns.md's documented\n    # \"save_run_data + on_finish output\" pattern.\n    phantom.save_run_data(key=\"playbook_output\", value=json.dumps({\n        \"status\": output_status,\n        \"ip_address\": ip_address,\n        \"hostname\": hostname or \"\",\n        \"subnet\": subnet or \"\",\n        \"space\": space or \"\",\n        \"mac_address\": mac_address or \"\",\n        \"ddi_class\": ddi_class or \"\",\n        \"description\": description or \"\",\n        \"ip_id\": ip_id or \"\",\n        \"alias_name\": alias_name,\n    }))\n\n    phantom.debug(\"EfficientIP DDI enrichment complete: status={}\".format(output_status))\n\n    ################################################################################\n"
+                },
+                "8": {
+                    "x": 560,
+                    "y": 200,
+                    "id": "8",
+                    "data": {
+                        "id": "8",
+                        "type": "format",
+                        "advanced": {
+                            "join": [],
+                            "drop_none": true,
+                            "customName": "format error note",
+                            "customNameId": 0
+                        },
+                        "template": "EfficientIP DDI enrichment could not run: no 'ip' input was provided.",
+                        "functionId": 7,
+                        "parameters": [],
+                        "functionName": "format_error"
+                    },
+                    "type": "format",
+                    "errors": {}
+                },
+                "9": {
+                    "x": 560,
+                    "y": 320,
+                    "id": "9",
+                    "data": {
+                        "id": "9",
+                        "type": "code",
+                        "advanced": {
+                            "join": [],
+                            "note": "Terminal error path for check_input's else branch: writes a note explaining why enrichment did not run and saves a failed playbook output.",
+                            "customName": "add error note",
+                            "description": "Record the missing-input error on the container.",
+                            "customNameId": 0
+                        },
+                        "functionId": 8,
+                        "functionName": "note_error",
+                        "inputParameters": [
+                            "format_error:formatted_data"
+                        ],
+                        "outputVariables": []
+                    },
+                    "type": "code",
+                    "errors": {},
+                    "userCode": "    ################################################################################\n\n    error_note = phantom.get_format_data(name=\"format_error\")\n\n    phantom.add_note(\n        container=container,\n        note_type=\"general\",\n        title=\"EfficientIP DDI Enrichment - Error\",\n        content=error_note,\n    )\n\n    # save_playbook_output_data() is only callable from on_finish() on SOAR 8.5\n    # (RuntimeError otherwise) -- stash the output via save_run_data and let\n    # on_finish() do the actual save. See playbook-patterns.md's documented\n    # \"save_run_data + on_finish output\" pattern.\n    phantom.save_run_data(key=\"playbook_output\", value=json.dumps({\n        \"status\": \"error\",\n        \"ip_address\": \"\",\n        \"hostname\": \"\",\n        \"subnet\": \"\",\n        \"space\": \"\",\n        \"mac_address\": \"\",\n        \"ddi_class\": \"\",\n        \"description\": \"\",\n        \"ip_id\": \"\",\n        \"alias_name\": \"\",\n    }))\n\n    ################################################################################\n"
+                }
+            },
+            "notes": "",
+            "description": "Data playbook for EfficientIP DDI (SOLIDserver) IP address enrichment. Looks up an IP in IPAM, then chains into a DNS alias lookup off the returned ip_id."
+        },
+        "input_spec": [
+            {
+                "name": "ip",
+                "default": "",
+                "contains": [
+                    "ip"
+                ],
+                "required": true,
+                "description": "IPv4/IPv6 address to look up in SOLIDserver's IPAM."
+            }
+        ],
+        "output_spec": [
+            {
+                "name": "status",
+                "contains": [],
+                "description": "Enrichment status: success or partial (see uc17 implementation plan question 1) or error (no ip provided)"
+            },
+            {
+                "name": "ip_address",
+                "contains": [
+                    "ip"
+                ],
+                "description": "The looked-up IP address (echoes playbook_input:ip)"
+            },
+            {
+                "name": "hostname",
+                "contains": [
+                    "host name"
+                ],
+                "description": "Hostname from get ip address, if found"
+            },
+            {
+                "name": "subnet",
+                "contains": [],
+                "description": "Subnet name from get ip address, if found"
+            },
+            {
+                "name": "space",
+                "contains": [],
+                "description": "Space (site) name from get ip address, if found"
+            },
+            {
+                "name": "mac_address",
+                "contains": [
+                    "mac address"
+                ],
+                "description": "MAC address from get ip address, if found"
+            },
+            {
+                "name": "ddi_class",
+                "contains": [],
+                "description": "SOLIDserver IP class name from get ip address, if found"
+            },
+            {
+                "name": "description",
+                "contains": [],
+                "description": "Description (from ip_class_parameters) from get ip address, if found"
+            },
+            {
+                "name": "ip_id",
+                "contains": [],
+                "description": "Internal SOLIDserver ip_id, used to chain into list aliases"
+            },
+            {
+                "name": "alias_name",
+                "contains": [
+                    "host name"
+                ],
+                "description": "DNS alias name from list aliases, if an ip_id was found and an alias exists"
+            }
+        ],
+        "playbook_type": "data",
+        "python_version": "3.13",
+        "schema": "5.0.5",
+        "version": "8.5.0.100"
+    },
+    "create_time": "2026-08-26T01:43:57.216996Z",
+    "draft_mode": false,
+    "labels": [
+        "events"
+    ],
+    "tags": [
+        "efficientip_ddi",
+        "investigation",
+        "enrichment"
+    ]
+}

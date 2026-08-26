@@ -38,13 +38,28 @@ ip_id" sub-resource shortcut, not the general list-filtering convention).
 `ip_pool_list`/`ip_block_subnet_list` take `WHERE` as *optional*, matching why
 `test_connectivity` can call the latter bare. Output field names
 (`subnet_name`, `site_name`, `mac_addr`, `ip_class_name`,
-`ip_class_parameters`, `ip_id`, `ip_alias`) are the vendor's real field names
-for `ip_address_list`, confirmed via public client docs; `description` is
+`ip_class_parameters`, `ip_id`, `name`) are the vendor's real field names
+for `ip_address_list` — confirmed against SOLIDserver's own public REST
+method reference (`solidserverrest` project docs, v9.0.1a), not just
+inferred by SDK analogy. That pass (2026-08-25) also caught 3 real bugs
+that had been silently masked because the mock used the same wrong names:
+`get ip address`'s hostname field is `name`, not `hostdev_name` (not a real
+field at all); `get ip pool`'s address-range fields are `start_hostaddr`/
+`end_hostaddr`, not `pool_start_hostaddr`/`pool_end_hostaddr`; `list
+aliases`' own name field is `alias_name`, not `ip_alias` (`ip_alias` is a
+real field, but on `ip_address_list`, not `ip_alias_list`). `description` is
 extracted from the `ip_class_parameters` custom-attribute blob, not a
-dedicated field. **`ip_pool_list`'s and `ip_alias_list`'s own field sets are
-NOT independently vendor-confirmed** — field names there are inferred by
-analogy to `ip_address_list`'s conventions, so both actions carry a
-`raw_json` fallback field; check it if a named field comes back empty.
+dedicated field. **`ip_block_subnet_list`'s and `ip_alias_list`'s own field
+sets are still not independently confirmed against this org's real APIM**
+— `ip_block_subnet_list` is this org's confirmed-real endpoint name but
+doesn't match any method in the current public docs (which only document
+`ip_subnet_list`, likely a newer/renamed API generation), so its field
+names are inferred by analogy to the `subnet_*`-prefixed fields nested
+inside `ip_address_list`/`ip_pool_list` rather than copied from
+`ip_subnet_list`'s own (differently-prefixed) field set; `ip_alias_list`'s
+non-`alias_name` fields are still analogy-based too. All three
+lower-confidence actions carry a `raw_json` fallback field; check it if a
+named field comes back empty.
 `ddi_user`/`ddi_pwd` appearing in the vendor's endpoint-parameter docs for
 every service means DDI auth context is required, already satisfied by the
 `X-DDI-Username`/`X-DDI-Password` headers — not literal query parameters
@@ -360,7 +375,7 @@ def get_ip_address(
         subnet=record.get("subnet_name", ""),
         space=record.get("site_name", ""),
         status=record.get("multistatus", ""),
-        hostname=record.get("hostdev_name", ""),
+        hostname=record.get("name", ""),
         mac_address=record.get("mac_addr", ""),
         ddi_class=record.get("ip_class_name", ""),
         description=class_params.get("description", ""),
@@ -387,11 +402,12 @@ class ListSubnetsOutput(ActionOutput):
     size: str = OutputField()
     ddi_class: str = OutputField()
     description: str = OutputField()
+    raw_json: str = OutputField()
 
 
 @app.action(
     name="list subnets",
-    description="Look up a subnet in SOLIDserver's IPAM by name (parent, space, address range, size, class) for enrichment. Output field names follow ip_address_list's confirmed subnet_* conventions but ip_block_subnet_list's own field set is not independently vendor-confirmed.",
+    description="Look up a subnet in SOLIDserver's IPAM by name (parent, space, address range, size, class) for enrichment. Output field names follow ip_address_list's confirmed subnet_* conventions but ip_block_subnet_list's own field set is not independently vendor-confirmed — check raw_json if a named field comes back empty.",
     action_type="investigate",
     read_only=True,
 )
@@ -424,6 +440,7 @@ def list_subnets(
         size=str(record.get("subnet_size", "")),
         ddi_class=record.get("subnet_class_name", ""),
         description=class_params.get("description", ""),
+        raw_json=json.dumps(record),
     )
 
 
@@ -473,8 +490,8 @@ def get_ip_pool(
         pool_name=record.get("pool_name", params.name),
         subnet=record.get("subnet_name", ""),
         space=record.get("site_name", ""),
-        start_address=record.get("pool_start_hostaddr", ""),
-        end_address=record.get("pool_end_hostaddr", ""),
+        start_address=record.get("start_hostaddr", ""),
+        end_address=record.get("end_hostaddr", ""),
         ddi_class=record.get("pool_class_name", ""),
         description=class_params.get("description", ""),
         raw_json=json.dumps(record),
@@ -511,7 +528,7 @@ def list_aliases(
 
     return ListAliasesOutput(
         ip_id=str(params.ip_id),
-        alias_name=records[0].get("ip_alias", ""),
+        alias_name=records[0].get("alias_name", ""),
         raw_json=json.dumps(records),
     )
 

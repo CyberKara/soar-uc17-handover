@@ -4,7 +4,7 @@
   "appid": "71a7abcc-75fa-4a8d-ae9d-23fb352869e4",
   "type": "ddi",
   "product_vendor": "EfficientIP",
-  "app_version": "1.0.0",
+  "app_version": "1.0.1",
   "license": "Copyright (c) 2026 Karabox Labs.",
   "min_phantom_version": "7.0.0",
   "package_name": "phantom_efficientip_ddi",
@@ -15,7 +15,7 @@
   "python_version": "3.13",
   "product_version_regex": ".*",
   "publisher": "Ted",
-  "utctime_updated": "2026-08-25T15:27:29.977174Z",
+  "utctime_updated": "2026-08-25T18:01:40.827594Z",
   "fips_compliant": false,
   "contributors": [],
   "configuration": {
@@ -230,7 +230,7 @@
     {
       "action": "list subnets",
       "identifier": "list_subnets",
-      "description": "Look up a subnet in SOLIDserver's IPAM by name (parent, space, address range, size, class) for enrichment. Output field names follow ip_address_list's confirmed subnet_* conventions but ip_block_subnet_list's own field set is not independently vendor-confirmed.",
+      "description": "Look up a subnet in SOLIDserver's IPAM by name (parent, space, address range, size, class) for enrichment. Output field names follow ip_address_list's confirmed subnet_* conventions but ip_block_subnet_list's own field set is not independently vendor-confirmed \u2014 check raw_json if a named field comes back empty.",
       "type": "investigate",
       "read_only": true,
       "versions": "EQ(*)",
@@ -303,6 +303,10 @@
         },
         {
           "data_path": "action_result.data.*.description",
+          "data_type": "string"
+        },
+        {
+          "data_path": "action_result.data.*.raw_json",
           "data_type": "string"
         },
         {
@@ -777,13 +781,13 @@
       },
       {
         "module": "requests",
-        "input_file": "wheels/shared/requests-2.34.2-py3-none-any.whl",
-        "input_file_aarch64": "wheels/shared/requests-2.34.2-py3-none-any.whl"
+        "input_file": "wheels/shared/requests-2.32.5-py3-none-any.whl",
+        "input_file_aarch64": "wheels/shared/requests-2.32.5-py3-none-any.whl"
       },
       {
         "module": "urllib3",
-        "input_file": "wheels/shared/urllib3-2.7.0-py3-none-any.whl",
-        "input_file_aarch64": "wheels/shared/urllib3-2.7.0-py3-none-any.whl"
+        "input_file": "wheels/shared/urllib3-2.6.3-py3-none-any.whl",
+        "input_file_aarch64": "wheels/shared/urllib3-2.6.3-py3-none-any.whl"
       },
       {
         "module": "certifi",
@@ -798,7 +802,7 @@
       {
         "module": "charset-normalizer",
         "input_file": "wheels/shared/charset_normalizer-3.5.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl",
-        "input_file_aarch64": "wheels/shared/charset_normalizer-3.5.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl"
+        "input_file_aarch64": "wheels/shared/charset_normalizer-3.5.1-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl"
       },
       {
         "module": "beautifulsoup4",
@@ -807,13 +811,49 @@
       },
       {
         "module": "soupsieve",
-        "input_file": "wheels/shared/soupsieve-2.9.2-py3-none-any.whl",
-        "input_file_aarch64": "wheels/shared/soupsieve-2.9.2-py3-none-any.whl"
+        "input_file": "wheels/shared/soupsieve-2.8.4-py3-none-any.whl",
+        "input_file_aarch64": "wheels/shared/soupsieve-2.8.4-py3-none-any.whl"
       }
     ]
   },
   "pip314_dependencies": {
-    "wheel": []
+    "wheel": [
+      {
+        "module": "requests",
+        "input_file": "wheels/shared/requests-2.32.5-py3-none-any.whl",
+        "input_file_aarch64": "wheels/shared/requests-2.32.5-py3-none-any.whl"
+      },
+      {
+        "module": "urllib3",
+        "input_file": "wheels/shared/urllib3-2.6.3-py3-none-any.whl",
+        "input_file_aarch64": "wheels/shared/urllib3-2.6.3-py3-none-any.whl"
+      },
+      {
+        "module": "certifi",
+        "input_file": "wheels/shared/certifi-2026.7.22-py3-none-any.whl",
+        "input_file_aarch64": "wheels/shared/certifi-2026.7.22-py3-none-any.whl"
+      },
+      {
+        "module": "idna",
+        "input_file": "wheels/shared/idna-3.19-py3-none-any.whl",
+        "input_file_aarch64": "wheels/shared/idna-3.19-py3-none-any.whl"
+      },
+      {
+        "module": "charset-normalizer",
+        "input_file": "wheels/shared/charset_normalizer-3.5.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl",
+        "input_file_aarch64": "wheels/shared/charset_normalizer-3.5.1-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl"
+      },
+      {
+        "module": "beautifulsoup4",
+        "input_file": "wheels/shared/beautifulsoup4-4.15.0-py3-none-any.whl",
+        "input_file_aarch64": "wheels/shared/beautifulsoup4-4.15.0-py3-none-any.whl"
+      },
+      {
+        "module": "soupsieve",
+        "input_file": "wheels/shared/soupsieve-2.8.4-py3-none-any.whl",
+        "input_file_aarch64": "wheels/shared/soupsieve-2.8.4-py3-none-any.whl"
+      }
+    ]
   },
   "supports_es_polling": false
 }

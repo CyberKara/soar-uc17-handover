@@ -113,6 +113,10 @@ def run_list_aliases(action=None, success=None, container=None, results=None, ha
         if item[0] is not None:
             parameters.append({
                 "ip_id": item[0],
+                # limit > 1 on purpose: at the default of 1 this test cannot
+                # tell a working multi-record result from the old
+                # truncate-to-records[0] bug.
+                "limit": "10",
             })
 
     phantom.act("list aliases", parameters=parameters, name="run_list_aliases", assets=[ASSET], callback=note_ip_and_alias)
@@ -146,9 +150,13 @@ def note_ip_and_alias(action=None, success=None, container=None, results=None, h
             "run_list_aliases:action_result.data.*.alias_name",
         ]
     )
-    alias_status, alias_message, alias_name = (
-        (alias_result[0][0], alias_result[0][1], alias_result[0][2]) if alias_result else ("not run", "", "")
-    )
+    if alias_result:
+        alias_status, alias_message = alias_result[0][0], alias_result[0][1]
+        # one row per alias -- count them rather than reading row 0, which is
+        # what the connector used to (wrongly) return on its own.
+        alias_names = [r[2] for r in alias_result if r and r[2]]
+    else:
+        alias_status, alias_message, alias_names = "not run", "", []
     alias_mark = "PASS" if alias_status == "success" else "FAIL"
 
     phantom.add_note(
@@ -157,8 +165,12 @@ def note_ip_and_alias(action=None, success=None, container=None, results=None, h
         title="efficientip_ddi action test - get ip address / list aliases - {}/{}".format(ip_mark, alias_mark),
         content=(
             "**get ip address:** {} -- {}\n\n"
-            "**list aliases:** {} -- {} (alias_name={!r})"
-        ).format(ip_mark, ip_message, alias_mark, alias_message, alias_name),
+            "**list aliases:** {} -- {}\n\n"
+            "**aliases returned:** {} -- {}\n\n"
+            "_Expect more than one alias here if the IP has several. A count of 1 "
+            "where the backend holds several means the multi-record fix regressed._"
+        ).format(ip_mark, ip_message, alias_mark, alias_message,
+                 len(alias_names), ", ".join(alias_names) if alias_names else "(none)"),
     )
 
     ################################################################################

@@ -2,6 +2,7 @@
 """Constants for EfficientIP DDI (Classic) SOAR Connector."""
 
 DEFAULT_TIMEOUT = 15  # seconds, matches the SDK connector's _request() timeout
+DEFAULT_LIMIT = 1  # fallback when the optional "limit" action param is omitted
 
 # Endpoints -- same convention as the SDK connector's app.py, vendor-confirmed
 # real on this org's APIM (see soar-connectors/connectors/efficientip_ddi/README.md)

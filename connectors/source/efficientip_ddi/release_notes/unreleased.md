@@ -1,5 +1,158 @@
 **Unreleased**
 
+## 1.0.8 (2026-08-27, later — real filter column for ip_block_subnet_list)
+
+**Real bug, found by asking the user rather than by testing.** `list subnets`
+filtered with `WHERE=name='<subnet>'`. On the real APIM `name` is **not a
+filterable column at all** — it is the SELECT column the record comes back
+under. The filterable one is `subnet_name`. The two genuinely differ on this
+service, so the "WHERE column matches the SELECT column" assumption that
+shipped as an explicit, commented hypothesis at 1.0.5 is **disproven**.
+
+Vendor-confirmed filterable columns on `ip_block_subnet_list`: `subnet_name`,
+`subnet_id`, `parent_subnet_name`, `parent_site_name`, `start_ip_addr` /
+`end_ip_addr` (hex) and `start_hostaddr` / `end_hostaddr` (dotted IP). The last
+four are the obvious inputs if the deferred "purpose-built WHERE filter
+parameters" design is ever picked up.
+
+Note this was invisible against the mock in **both** directions: the mock
+matched on `name`, so the wrong key passed locally, and it also fell through to
+returning every record when a `WHERE` did not match — which would have made a
+naive "does it return a row?" probe answer "yes" for either key. The mock now
+matches on `subnet_name` only, deliberately not accepting `name` as well, and
+the regression is pinned from both sides
+(`test_list_subnets_filters_on_subnet_name_not_name`,
+`test_mock_rejects_the_non_filterable_name_column`).
+
+Mirrored into the classic twin (1.0.6). The record's *output* mapping is
+unchanged — `subnet_name` output still reads `record["name"]`, which remains
+correct.
+
+**Still unconfirmed:** `ip_alias_list`'s own field names (`alias_name` is still
+analogy-based) — the user had no ip_id with aliases to check against.
+
+## 1.0.7 (2026-08-27 — multi-record results, `limit` as a real parameter, input validation)
+
+Fixes from the 2026-08-27 code review of UC17.
+
+- **Every record-returning action emitted only `records[0]`** while
+  advertising a `data.*` list datapath. An IP with two DNS aliases reported
+  one, with no indication more existed. Found independently from both the
+  connector and the playbook side. All four actions now return
+  `list[ActionOutput]`, which the SDK flattens into one result with N data
+  items. The mock had seeded exactly one alias, which is why this passed
+  locally for as long as it did — it now seeds two.
+- **`limit` is now a real action parameter (numeric, optional, default 1)**
+  on all four record-returning actions, replacing the hardcoded `limit=1`.
+  The bound still always goes on the wire — an unbounded call times out
+  server-side on the real APIM — but raising it is now the caller's to do,
+  and actually widens the result instead of being silently discarded. At the
+  default this is behaviorally identical to 1.0.6, so nothing that calls
+  these actions today changes. `test_connectivity` keeps a fixed `limit=1`;
+  it has no parameter surface and only needs to prove reachability.
+- **`list aliases`' `ip_id` parameter is now a string, not numeric.**
+  `get ip address` emits `ip_id` as a string output, so the chain the action
+  descriptions instruct users to build could not actually be wired in the
+  VPE editor — it worked only via pydantic coercion when called from code.
+  A new `_validate_int()` still enforces a whole number before it reaches
+  the URL path, which also closes the float case: a numeric param arriving
+  as `1001.0` produced `/rest/ip_alias_list/ip_id/1001.0` and a false "no
+  aliases". Same precedent as `proofpoint_trap`'s `_validate_integer()`.
+- **`_ip_to_hex()` raised a bare `ValueError`** for a non-IP `address`
+  (hostname, CIDR, typo), so the SDK's generic handler dumped a raw
+  traceback as the failure message. Now raises `ActionFailure` with a
+  message that says what the parameter actually takes.
+- Mirrored into the classic twin connector (1.0.5), whose manifest also had
+  **stale declared outputs**: it still advertised the pre-`2315a4d` curated
+  names (`data.*.subnet`, `.hostname`, `.status`) after the connector
+  switched to raw pass-through, so every one of those datapaths was dead in
+  the VPE. Rewritten to the real keys SOLIDserver returns. The twin also
+  hardcoded `total_objects = 1`; it now reports the true count.
+- **Regression coverage added, which is what caught the last two bugs.** The
+  mock's `_WHERE_RE` never un-doubled `''`, so `_sql_escape()`'s output could
+  never match seed data — and no seed record contained a quote, so the whole
+  escaping path was untestable rather than merely untested. The mock now
+  un-doubles, honors `limit`, and seeds both a two-alias IP and a pool name
+  containing an apostrophe. New suites:
+  `efficientip_ddi_classic/tests/` (23 tests) and
+  `soar-connectors/test/test_mock_efficientip_ddi.py` (16 tests), plus a
+  live end-to-end run of both connectors against the mock over real mTLS
+  (13 checks). The float-`ip_id` test immediately failed against the first
+  draft of `_validate_int()`, which used `int(str(value))` and so rejected
+  `1001.0` — precisely the case it was written to absorb.
+
+**Still not retested against the real airgapped SOLIDserver/APIM.** Nothing
+here has touched the real appliance; the `WHERE`-filter-key hypothesis for
+`ip_block_subnet_list` remains unconfirmed.
+
+## 1.0.5 (2026-08-26, later still — real field names + raw pass-through everywhere)
+
+User shared a real `ip_block_subnet_list` response record: `site_name` and
+`parent_subnet_name` were correct, but the subnet's own name field is
+`name`, not `subnet_name` as inferred by analogy to the differently-named
+`ip_subnet_list` method in the public docs. Fixed the read side
+(`list_subnets`'s `subnet_name` output now reads `record["name"]`) and,
+as a hypothesis pending real confirmation, the `WHERE` filter key too
+(`WHERE=name=` instead of `WHERE=subnet_name=` -- assumes the filter
+column matches the SELECT column, unconfirmed). Added a new `tree_path`
+output field, also present in the real record. Added `raw_json` to
+`get_ip_address` (previously the only action without it, now every
+action has it). Classic twin connector (`efficientip_ddi_classic`)
+rebuilt around full raw pass-through instead of manual field mapping --
+`action_result.add_data(record)` forwards every real key SOLIDserver
+returns under `action_result.data.*.<key>`, eliminating the whole class
+of field-name-guessing bugs found today (subnet_name/name,
+start_hostaddr/pool_start_hostaddr, ip_alias/alias_name, hostdev_name/
+name). `description` (parsed from the `*_class_parameters` blob) is
+still added as a convenience key on top of the raw record.
+
+## 1.0.4 (2026-08-26, later still — real 204 No Content on empty results)
+
+User confirmed live: a "not found" result on the real APIM (e.g. an
+unknown `ip_id` for `list_aliases`) returns HTTP 204 No Content (empty
+body, no `Content-Type`), not a 200 with an empty JSON array.
+`_process_response()`'s empty-content branch was defaulting to `{}` (a
+dict) -- every action here expects a list from `_ensure_list()`, so a real
+204 was tripping the generic "unexpected response shape" ActionFailure
+instead of the intended friendly "No X found" message. Fixed: empty
+content now defaults to `[]`. Mirrored into the classic twin connector.
+Mock server (both copies) updated to actually return 204 (via a new
+`send_no_content()` helper) instead of `200 []` for every not-found case,
+so this exact scenario now has real regression coverage instead of
+accidentally passing through a different code path.
+
+## 1.0.3 (2026-08-26, later — limit=1 forced on every list call, including list_aliases)
+
+User pointed out the 1.0.2 fix was incomplete as a general policy: relying
+on `WHERE` alone to stay narrow isn't safe if a *different* filter style
+were ever used (e.g. a range filter instead of an exact match could return
+hundreds of rows), and `list_aliases` still had zero params at all — the
+same bare-unbounded shape `test_connectivity` had before 1.0.2. Fixed:
+`limit=1` now sent unconditionally on every one of the 5 actions' list
+calls, not just the ones that lacked `WHERE`. Consolidated the rationale
+into one docstring note instead of repeating it per call site. Mirrored
+into the classic twin connector.
+
+## 1.0.2 (2026-08-26 — real APIM timeout on unbounded list calls)
+
+User reported live behavior against the real airgapped APIM: `GET
+/rest/ip_address_list` with neither `WHERE` nor `limit` times out
+server-side; adding `limit=N` (even with no `WHERE`) works fine, and a
+single-record `WHERE=ip_addr='<hex>'` lookup also works (both confirmed
+live, e.g. `?limit=5` and `?WHERE=ip_addr='0a4f181f'`). `test_connectivity`
+was calling `ip_block_subnet_list` completely bare (no params at all) --
+exactly the failure pattern reported -- so it's genuinely at risk of timing
+out on the real APIM despite always passing against the mock (which has no
+real backend to time out). Fixed: `test_connectivity` now sends
+`limit=1`. Also added `limit=1` defensively to `get_ip_address`,
+`list_subnets`, and `get_ip_pool`'s existing `WHERE=`-filtered calls --
+untested whether `WHERE` alone is sufficient to bound those queries on the
+real backend, so this is cheap insurance (we only ever want the one
+matching record anyway) pending confirmation. `list_aliases` unchanged
+(path-parameter style, not a `WHERE`/`limit` list call). Mirrored into the
+classic twin connector (`efficientip_ddi_classic`) for the same reason.
+Mock server unaffected -- it already ignores unrecognized query params.
+
 ## 1.0.1 (2026-08-25, later still — field-name fixes against real vendor docs)
 
 Cross-referenced every action's field mapping against SOLIDserver's own

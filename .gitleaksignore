@@ -1,7 +1,29 @@
-# False positive: _normalize_pem() in efficientip_ddi_classic_connector.py
-# lists PEM header/footer marker strings (CERTIFICATE, PRIVATE KEY, RSA/EC
-# PRIVATE KEY) to detect and normalize pasted cert/key blocks — same pattern
-# as cyberark_ccp's own _normalize_pem(). No actual key material is present —
+# False positives: PEM header/footer MARKER STRINGS, not key material.
+#
+# Both connectors implement a _normalize_pem() helper that reflows a pasted
+# cert/key block to strict 64-column PEM. To do that it has to know the
+# header/footer delimiters, so it carries a literal list of them
+# (PEM_BLOCK_TYPES in the SDK app, block_types in the classic connector):
+#
+#     ("-----BEGIN CERTIFICATE-----", "-----END CERTIFICATE-----"),
+#     ("-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----"),
+#     ...
+#
 # gitleaks' private-key rule is a literal string match with no code-semantics
-# awareness. Verified by reading the surrounding function.
-connectors/source/efficientip_ddi_classic/efficientip_ddi_classic_connector.py:private-key:402
+# awareness, so it fires on the delimiters themselves. No actual key bytes are
+# present anywhere in this package: verified 2026-08-27 by reading both
+# surrounding functions, and by scanning the whole export for base64 runs
+# longer than 60 chars (zero hits outside the bundled wheels).
+#
+# Same pattern as cyberark_ccp's _normalize_pem() in the UC1 handover.
+#
+# NOTE: these fingerprints are line-pinned. The classic connector's markers
+# moved 402 -> 490-492 in v1.0.6, and the SDK app gained its own copy at
+# 128-130 — so re-check these line numbers whenever either connector changes,
+# or the gate will either miss a real finding or fail the commit.
+connectors/source/efficientip_ddi_classic/efficientip_ddi_classic_connector.py:private-key:490
+connectors/source/efficientip_ddi_classic/efficientip_ddi_classic_connector.py:private-key:491
+connectors/source/efficientip_ddi_classic/efficientip_ddi_classic_connector.py:private-key:492
+connectors/source/efficientip_ddi/src/app.py:private-key:128
+connectors/source/efficientip_ddi/src/app.py:private-key:129
+connectors/source/efficientip_ddi/src/app.py:private-key:130

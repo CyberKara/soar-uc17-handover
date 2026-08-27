@@ -33,6 +33,7 @@ from phantom.action_result import ActionResult
 from phantom.base_connector import BaseConnector
 
 from efficientip_ddi_classic_consts import (
+    DEFAULT_LIMIT,
     DEFAULT_TIMEOUT,
     IP_ADDRESS_LIST_PATH,
     IP_ALIAS_LIST_PATH,
@@ -97,8 +98,11 @@ class EfficientipDdiClassicConnector(BaseConnector):
 
         # No dedicated health-check service exists in SOLIDserver's real API.
         # ip_block_subnet_list is the one endpoint confirmed to exist on the
-        # real APIM that needs no filter/params at all.
-        ret_val, _ = self._make_rest_call("GET", IP_BLOCK_SUBNET_LIST_PATH, None, action_result)
+        # real APIM that needs no filter/params at all. limit=1 is required,
+        # not optional: confirmed live against the real APIM (2026-08-26)
+        # that a bare list call with no WHERE *and* no limit times out
+        # server-side; adding limit alone (no WHERE) is what actually works.
+        ret_val, _ = self._make_rest_call("GET", IP_BLOCK_SUBNET_LIST_PATH, {"limit": 1}, action_result)
 
         if phantom.is_fail(ret_val):
             self.save_progress("Test Connectivity Failed")
@@ -112,10 +116,15 @@ class EfficientipDdiClassicConnector(BaseConnector):
         self.save_progress("DEBUG GUI: Starting get ip address action")
 
         address = param["address"]
-        hex_addr = self._ip_to_hex(address)
+        hex_addr = self._ip_to_hex(address, action_result)
+        if hex_addr is None:
+            return action_result.get_status()
+        limit = self._limit_from(param, action_result)
+        if limit is None:
+            return action_result.get_status()
 
         ret_val, records = self._make_rest_call(
-            "GET", IP_ADDRESS_LIST_PATH, {"WHERE": "ip_addr='{}'".format(hex_addr)}, action_result
+            "GET", IP_ADDRESS_LIST_PATH, {"WHERE": "ip_addr='{}'".format(hex_addr), "limit": limit}, action_result
         )
         if phantom.is_fail(ret_val):
             return action_result.get_status()
@@ -128,33 +137,48 @@ class EfficientipDdiClassicConnector(BaseConnector):
                 phantom.APP_ERROR, "No IP address record found in SOLIDserver for {}".format(address)
             )
 
-        record = records[0]
-        class_params = self._parse_class_parameters(record.get("ip_class_parameters", ""))
+        # Raw pass-through, not a curated field mapping: the real API's own
+        # field names have been wrong under manual mapping multiple times
+        # (subnet_name vs name, start_hostaddr vs pool_start_hostaddr, etc.)
+        # -- every real key SOLIDserver returns is forwarded as-is under
+        # action_result.data.*.<key>, no guessing required. address and
+        # description (parsed from the ip_class_parameters blob) are added
+        # as convenience keys on top.
+        #
+        # One data item per record, not just records[0]: data.* is a list
+        # datapath, so truncating here would silently drop every row past
+        # the first whenever the caller raises "limit".
+        for record in records:
+            class_params = self._parse_class_parameters(record.get("ip_class_parameters", ""))
+            record["description"] = class_params.get("description", "")
+            record["address"] = address
+            action_result.add_data(record)
 
-        action_result.add_data({
-            "address": address,
-            "ip_id": record.get("ip_id", ""),
-            "subnet": record.get("subnet_name", ""),
-            "space": record.get("site_name", ""),
-            "status": record.get("multistatus", ""),
-            "hostname": record.get("name", ""),
-            "mac_address": record.get("mac_addr", ""),
-            "ddi_class": record.get("ip_class_name", ""),
-            "description": class_params.get("description", ""),
-        })
         summary = action_result.update_summary({})
-        summary["total_objects"] = 1
-        summary["total_objects_successful"] = 1
+        summary["total_objects"] = len(records)
+        summary["total_objects_successful"] = len(records)
 
-        return action_result.set_status(phantom.APP_SUCCESS, "Successfully retrieved IP address record")
+        return action_result.set_status(
+            phantom.APP_SUCCESS, "Successfully retrieved {} IP address record(s)".format(len(records))
+        )
 
     def _handle_list_subnets(self, param):
         action_result = self.add_action_result(ActionResult(dict(param)))
         self.save_progress("DEBUG GUI: Starting list subnets action")
 
         name = param["name"]
+        limit = self._limit_from(param, action_result)
+        if limit is None:
+            return action_result.get_status()
+
         ret_val, records = self._make_rest_call(
-            "GET", IP_BLOCK_SUBNET_LIST_PATH, {"WHERE": "subnet_name='{}'".format(self._sql_escape(name))}, action_result
+            # The WHERE column and the SELECT column genuinely differ here:
+            # the record returns its name under "name", but the filterable
+            # column is "subnet_name". Vendor-confirmed against the real
+            # APIM -- filtering on "name" does not work. Other filterable
+            # columns: subnet_id, parent_subnet_name, parent_site_name,
+            # start_ip_addr/end_ip_addr (hex), start_hostaddr/end_hostaddr.
+            "GET", IP_BLOCK_SUBNET_LIST_PATH, {"WHERE": "subnet_name='{}'".format(self._sql_escape(name)), "limit": limit}, action_result
         )
         if phantom.is_fail(ret_val):
             return action_result.get_status()
@@ -165,34 +189,32 @@ class EfficientipDdiClassicConnector(BaseConnector):
         if not records:
             return action_result.set_status(phantom.APP_ERROR, "No subnet found in SOLIDserver for {}".format(name))
 
-        record = records[0]
-        class_params = self._parse_class_parameters(record.get("subnet_class_parameters", ""))
+        # Raw pass-through, one data item per record -- see
+        # _handle_get_ip_address for both rationales.
+        for record in records:
+            class_params = self._parse_class_parameters(record.get("subnet_class_parameters", ""))
+            record["description"] = class_params.get("description", "")
+            action_result.add_data(record)
 
-        action_result.add_data({
-            "subnet_id": record.get("subnet_id", ""),
-            "subnet_name": record.get("subnet_name", name),
-            "parent_subnet": record.get("parent_subnet_name", ""),
-            "space": record.get("site_name", ""),
-            "start_address": record.get("subnet_start_ip_addr", ""),
-            "end_address": record.get("subnet_end_ip_addr", ""),
-            "size": str(record.get("subnet_size", "")),
-            "ddi_class": record.get("subnet_class_name", ""),
-            "description": class_params.get("description", ""),
-            "raw_json": json.dumps(record),
-        })
         summary = action_result.update_summary({})
-        summary["total_objects"] = 1
-        summary["total_objects_successful"] = 1
+        summary["total_objects"] = len(records)
+        summary["total_objects_successful"] = len(records)
 
-        return action_result.set_status(phantom.APP_SUCCESS, "Successfully retrieved subnet record")
+        return action_result.set_status(
+            phantom.APP_SUCCESS, "Successfully retrieved {} subnet record(s)".format(len(records))
+        )
 
     def _handle_get_ip_pool(self, param):
         action_result = self.add_action_result(ActionResult(dict(param)))
         self.save_progress("DEBUG GUI: Starting get ip pool action")
 
         name = param["name"]
+        limit = self._limit_from(param, action_result)
+        if limit is None:
+            return action_result.get_status()
+
         ret_val, records = self._make_rest_call(
-            "GET", IP_POOL_LIST_PATH, {"WHERE": "pool_name='{}'".format(self._sql_escape(name))}, action_result
+            "GET", IP_POOL_LIST_PATH, {"WHERE": "pool_name='{}'".format(self._sql_escape(name)), "limit": limit}, action_result
         )
         if phantom.is_fail(ret_val):
             return action_result.get_status()
@@ -203,33 +225,38 @@ class EfficientipDdiClassicConnector(BaseConnector):
         if not records:
             return action_result.set_status(phantom.APP_ERROR, "No IP pool found in SOLIDserver for {}".format(name))
 
-        record = records[0]
-        class_params = self._parse_class_parameters(record.get("pool_class_parameters", ""))
+        # Raw pass-through, one data item per record -- see
+        # _handle_get_ip_address for both rationales.
+        for record in records:
+            class_params = self._parse_class_parameters(record.get("pool_class_parameters", ""))
+            record["description"] = class_params.get("description", "")
+            action_result.add_data(record)
 
-        action_result.add_data({
-            "pool_id": record.get("pool_id", ""),
-            "pool_name": record.get("pool_name", name),
-            "subnet": record.get("subnet_name", ""),
-            "space": record.get("site_name", ""),
-            "start_address": record.get("start_hostaddr", ""),
-            "end_address": record.get("end_hostaddr", ""),
-            "ddi_class": record.get("pool_class_name", ""),
-            "description": class_params.get("description", ""),
-            "raw_json": json.dumps(record),
-        })
         summary = action_result.update_summary({})
-        summary["total_objects"] = 1
-        summary["total_objects_successful"] = 1
+        summary["total_objects"] = len(records)
+        summary["total_objects_successful"] = len(records)
 
-        return action_result.set_status(phantom.APP_SUCCESS, "Successfully retrieved IP pool record")
+        return action_result.set_status(
+            phantom.APP_SUCCESS, "Successfully retrieved {} IP pool record(s)".format(len(records))
+        )
 
     def _handle_list_aliases(self, param):
         action_result = self.add_action_result(ActionResult(dict(param)))
         self.save_progress("DEBUG GUI: Starting list aliases action")
 
-        ip_id = param["ip_id"]
+        # Validated, not interpolated raw: ip_id is declared as a string
+        # param (so the "get ip address" chain is wireable in the VPE), and a
+        # stray float like 1001.0 would otherwise become
+        # /rest/ip_alias_list/ip_id/1001.0 and a false "no aliases".
+        ip_id = self._validate_int(param["ip_id"], "ip_id", action_result)
+        if ip_id is None:
+            return action_result.get_status()
+        limit = self._limit_from(param, action_result)
+        if limit is None:
+            return action_result.get_status()
+
         ret_val, records = self._make_rest_call(
-            "GET", IP_ALIAS_LIST_PATH.format(ip_id=ip_id), None, action_result
+            "GET", IP_ALIAS_LIST_PATH.format(ip_id=ip_id), {"limit": limit}, action_result
         )
         if phantom.is_fail(ret_val):
             return action_result.get_status()
@@ -242,16 +269,19 @@ class EfficientipDdiClassicConnector(BaseConnector):
                 phantom.APP_ERROR, "No aliases found in SOLIDserver for ip_id {}".format(ip_id)
             )
 
-        action_result.add_data({
-            "ip_id": str(ip_id),
-            "alias_name": records[0].get("alias_name", ""),
-            "raw_json": json.dumps(records),
-        })
-        summary = action_result.update_summary({})
-        summary["total_objects"] = 1
-        summary["total_objects_successful"] = 1
+        # Raw pass-through, one data item per alias -- an IP with two DNS
+        # aliases must report two rows, not silently just the first.
+        for record in records:
+            record["ip_id"] = str(ip_id)
+            action_result.add_data(record)
 
-        return action_result.set_status(phantom.APP_SUCCESS, "Successfully retrieved alias record")
+        summary = action_result.update_summary({})
+        summary["total_objects"] = len(records)
+        summary["total_objects_successful"] = len(records)
+
+        return action_result.set_status(
+            phantom.APP_SUCCESS, "Successfully retrieved {} alias record(s)".format(len(records))
+        )
 
     # ---- REST Call Wrapper ----
 
@@ -320,7 +350,15 @@ class EfficientipDdiClassicConnector(BaseConnector):
                     None,
                 )
         elif not response.content:
-            data = {}
+            # Confirmed live (2026-08-26): the real APIM returns HTTP 204 No
+            # Content (empty body, no Content-Type) for a "not found"/empty
+            # result on a list endpoint -- not a 200 with an empty JSON
+            # array. Every action here expects a list from _ensure_list(),
+            # so default to [] here, not {} -- a dict would fail that
+            # isinstance check and surface a confusing "unexpected response
+            # shape" error instead of the intended friendly "No X found"
+            # message.
+            data = []
         elif response.ok:
             return (
                 action_result.set_status(
@@ -372,10 +410,60 @@ class EfficientipDdiClassicConnector(BaseConnector):
             "X-DDI-Password": base64.b64encode(config["ddi_password"].encode()).decode(),
         }
 
-    def _ip_to_hex(self, address):
+    def _ip_to_hex(self, address, action_result):
         """SOLIDserver's ip_addr filter field takes the address as hex, not
-        dotted-decimal."""
-        return ipaddress.ip_address(address).packed.hex()
+        dotted-decimal. Returns None (with action_result already failed) for
+        anything that isn't a bare IP -- a hostname, CIDR range or typo would
+        otherwise raise a bare ValueError out of the handler."""
+        try:
+            return ipaddress.ip_address(address).packed.hex()
+        except ValueError:
+            action_result.set_status(
+                phantom.APP_ERROR,
+                "'{}' is not a valid IP address -- this action takes a single "
+                "IPv4 or IPv6 address, not a hostname, CIDR range, or URL".format(address),
+            )
+            return None
+
+    def _validate_int(self, value, field_name, action_result):
+        """Coerce a numeric param to a real int, or fail the action.
+
+        SOAR hands numeric params through as float or str often enough that
+        raw interpolation is unsafe: a float 1001.0 interpolated into a URL
+        path yields /rest/ip_alias_list/ip_id/1001.0 and a false "no aliases".
+        Same precedent as proofpoint_trap's _validate_integer().
+        """
+        try:
+            # float() first, not int(): SOAR hands a numeric param through as
+            # 1001.0 often enough that int("1001.0") -- which raises -- would
+            # reject the very case this helper exists to absorb.
+            as_float = float(str(value).strip())
+        except (TypeError, ValueError):
+            action_result.set_status(
+                phantom.APP_ERROR,
+                "'{}' must be a whole number, got: {}".format(field_name, value),
+            )
+            return None
+        if as_float != int(as_float):
+            action_result.set_status(
+                phantom.APP_ERROR,
+                "'{}' must be a whole number, got: {}".format(field_name, value),
+            )
+            return None
+        parsed = int(as_float)
+        if parsed < 1:
+            action_result.set_status(
+                phantom.APP_ERROR,
+                "'{}' must be a positive whole number, got: {}".format(field_name, parsed),
+            )
+            return None
+        return parsed
+
+    def _limit_from(self, param, action_result):
+        """Every list call is bounded -- an unbounded call times out
+        server-side on the real APIM -- but the bound is the caller's to
+        raise, not a hardcoded 1."""
+        return self._validate_int(param.get("limit", DEFAULT_LIMIT), "limit", action_result)
 
     def _parse_class_parameters(self, raw):
         """SOLIDserver packs custom attributes as a query-string-style blob,

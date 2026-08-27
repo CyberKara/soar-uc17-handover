@@ -31,12 +31,21 @@ that action only once a real record-level endpoint is identified.
 `test_connectivity` calls `/rest/ip_block_subnet_list` bare (no params) since
 that's the one confirmed-real endpoint that needs no filter.
 
+`ip_block_subnet_list`'s filterable columns are vendor-confirmed:
+`subnet_name`, `subnet_id`, `parent_subnet_name`, `parent_site_name`,
+`start_ip_addr`/`end_ip_addr` (hex) and `start_hostaddr`/`end_hostaddr` (dotted
+IP). Note the filter column is **`subnet_name`** while the *returned* record
+carries its name under **`name`** — the two genuinely differ on this service,
+so the usual "WHERE column matches SELECT column" assumption is wrong here and
+filtering on `name=` does not work.
+
 `WHERE` is a real, **required** parameter on `ip_address_list` — not optional,
 and not a guess — which is why filtering here uses query-string `WHERE=` and
 not `ip_alias_list`'s path-parameter style (that's a "list children of a known
 ip_id" sub-resource shortcut, not the general list-filtering convention).
 `ip_pool_list`/`ip_block_subnet_list` take `WHERE` as *optional*, matching why
-`test_connectivity` can call the latter bare. Output field names
+`test_connectivity` can call the latter without a `WHERE` clause (it still
+sends `limit=1` — see the `limit` policy below). Output field names
 (`subnet_name`, `site_name`, `mac_addr`, `ip_class_name`,
 `ip_class_parameters`, `ip_id`, `name`) are the vendor's real field names
 for `ip_address_list` — confirmed against SOLIDserver's own public REST
@@ -60,6 +69,26 @@ inside `ip_address_list`/`ip_pool_list` rather than copied from
 non-`alias_name` fields are still analogy-based too. All three
 lower-confidence actions carry a `raw_json` fallback field; check it if a
 named field comes back empty.
+
+**`limit` policy: every list call is bounded, and the bound is an action
+parameter (`limit`, default 1).** Confirmed live against the real APIM: an
+unbounded call (no `WHERE`, no `limit`) times out server-side — the backend
+does a full scan/dump. Adding `limit` alone (no `WHERE`) works fine, and a
+`WHERE`-filtered single-record lookup also works. Relying on `WHERE` alone
+to stay narrow isn't safe either: a filter style other than the exact-match
+ones used here (e.g. a range filter instead of an exact `ip_addr=`/`name=`
+match) could legitimately return hundreds of rows. So a `limit` always goes
+on the wire — but it is the analyst's/playbook's to raise, not a hardcoded
+1. `test_connectivity` keeps a fixed `limit=1` since it has no parameter
+surface and only needs to prove reachability.
+
+**Every record-returning action emits one output row per record**
+(`list[...]` return → SOAR flattens to `action_result.data.*`), so raising
+`limit` actually widens the result instead of being silently discarded. At
+the default `limit=1` this is behaviorally identical to returning a single
+row. Truncating to `records[0]` while advertising `data.*` was a real bug:
+an IP with two DNS aliases reported one, with no indication more existed.
+
 `ddi_user`/`ddi_pwd` appearing in the vendor's endpoint-parameter docs for
 every service means DDI auth context is required, already satisfied by the
 `X-DDI-Username`/`X-DDI-Password` headers — not literal query parameters
@@ -85,6 +114,14 @@ from soar_sdk.logging import getLogger
 from soar_sdk.params import Param, Params
 
 logger = getLogger()
+
+DEFAULT_LIMIT = 1
+
+LIMIT_DESCRIPTION = (
+    "Maximum number of records to return (default 1). Must be a positive whole "
+    "number -- an unbounded call times out server-side on the real APIM, so a "
+    "limit always goes on the wire."
+)
 
 PEM_BLOCK_TYPES = [
     ("-----BEGIN CERTIFICATE-----", "-----END CERTIFICATE-----"),
@@ -221,9 +258,38 @@ def _cleanup_temp_files(*file_paths: str | None) -> None:
                 pass
 
 
+def _validate_int(value: object, field_name: str) -> int:
+    """Coerce a numeric param to a real int.
+
+    SOAR hands numeric params through as float or str often enough that raw
+    interpolation is unsafe: a float 1001.0 interpolated into a URL path
+    yields /rest/ip_alias_list/ip_id/1001.0 and a false "no aliases". Same
+    precedent as proofpoint_trap's _validate_integer().
+    """
+    try:
+        # float() first, not int(): SOAR hands a numeric param through as
+        # 1001.0 often enough that int("1001.0") -- which raises -- would
+        # reject the very case this helper exists to absorb.
+        as_float = float(str(value).strip())
+    except (TypeError, ValueError) as e:
+        raise ActionFailure(f"'{field_name}' must be a whole number, got: {value!r}") from e
+    if as_float != int(as_float):
+        raise ActionFailure(f"'{field_name}' must be a whole number, got: {value!r}")
+    parsed = int(as_float)
+    if parsed < 1:
+        raise ActionFailure(f"'{field_name}' must be a positive whole number, got: {parsed}")
+    return parsed
+
+
 def _ip_to_hex(address: str) -> str:
     """SOLIDserver's ip_addr filter field takes the address as hex, not dotted-decimal."""
-    return ipaddress.ip_address(address).packed.hex()
+    try:
+        return ipaddress.ip_address(address).packed.hex()
+    except ValueError as e:
+        raise ActionFailure(
+            f"'{address}' is not a valid IP address -- this action takes a single "
+            f"IPv4 or IPv6 address, not a hostname, CIDR range, or URL"
+        ) from e
 
 
 def _parse_class_parameters(raw: str) -> dict[str, str]:
@@ -301,7 +367,14 @@ def _process_response(response: requests.Response) -> dict:
         except ValueError as e:
             raise ActionFailure(f"Unable to parse JSON response: {e}") from e
     elif not response.content:
-        data = {}
+        # Confirmed live (2026-08-26): the real APIM returns HTTP 204 No
+        # Content (empty body, no Content-Type) for a "not found"/empty
+        # result on a list endpoint -- not a 200 with an empty JSON array.
+        # Every action in this connector expects a list from _ensure_list(),
+        # so default to [] here, not {} -- a dict would fail that isinstance
+        # check and surface a confusing "unexpected response shape" error
+        # instead of the intended friendly "No X found" ActionFailure.
+        data = []
     elif response.ok:
         raise ActionFailure(
             f"Unexpected non-JSON response (status {response.status_code}, "
@@ -322,13 +395,17 @@ def test_connectivity(soar: SOARClient, asset: Asset) -> None:
     # No dedicated health-check service exists in SOLIDserver's real API.
     # ip_block_subnet_list is the one endpoint confirmed to exist on the real
     # APIM that needs no filter/params at all, making it the safest possible
-    # connectivity/auth check.
-    _request(asset, "GET", "/rest/ip_block_subnet_list")
+    # connectivity/auth check. limit=1 is required, not optional: the user
+    # confirmed live against the real APIM (2026-08-26) that a bare list call
+    # with no WHERE *and* no limit times out server-side; adding limit alone
+    # (no WHERE) is what actually works.
+    _request(asset, "GET", "/rest/ip_block_subnet_list", params={"limit": 1})
     logger.info("test connectivity OK (APIM /rest/ip_block_subnet_list reachable, mTLS + auth accepted)")
 
 
 class GetIpAddressParams(Params):
     address: str = Param(description="IPv4/IPv6 address to look up in SOLIDserver's IPAM.", required=True, cef_types=["ip"])
+    limit: int = Param(description=LIMIT_DESCRIPTION, required=False, default=DEFAULT_LIMIT)
 
 
 class GetIpAddressOutput(ActionOutput):
@@ -341,11 +418,12 @@ class GetIpAddressOutput(ActionOutput):
     mac_address: str = OutputField(cef_types=["mac address"])
     ddi_class: str = OutputField()
     description: str = OutputField()
+    raw_json: str = OutputField()
 
 
 @app.action(
     name="get ip address",
-    description="Look up an IP address in SOLIDserver's IPAM (subnet, space, status, hostname, MAC, class) for enrichment.",
+    description="Look up an IP address in SOLIDserver's IPAM (subnet, space, status, hostname, MAC, class) for enrichment. Named fields are best-effort -- raw_json is the reliable source of truth, since these have been wrong under manual mapping more than once (e.g. hostname was hostdev_name until confirmed otherwise).",
     action_type="investigate",
     read_only=True,
 )
@@ -353,33 +431,39 @@ def get_ip_address(
     params: GetIpAddressParams,
     soar: SOARClient,
     asset: Asset,
-) -> GetIpAddressOutput:
+) -> list[GetIpAddressOutput]:
     hex_addr = _ip_to_hex(params.address)
+    limit = _validate_int(params.limit, "limit")
     records = _ensure_list(
         _request(
             asset,
             "GET",
             "/rest/ip_address_list",
-            params={"WHERE": f"ip_addr='{hex_addr}'"},
+            params={"WHERE": f"ip_addr='{hex_addr}'", "limit": limit},
         ),
         "ip_address_list",
     )
     if not records:
         raise ActionFailure(f"No IP address record found in SOLIDserver for {params.address}")
-    record = records[0]
-    class_params = _parse_class_parameters(record.get("ip_class_parameters", ""))
 
-    return GetIpAddressOutput(
-        address=params.address,
-        ip_id=record.get("ip_id", ""),
-        subnet=record.get("subnet_name", ""),
-        space=record.get("site_name", ""),
-        status=record.get("multistatus", ""),
-        hostname=record.get("name", ""),
-        mac_address=record.get("mac_addr", ""),
-        ddi_class=record.get("ip_class_name", ""),
-        description=class_params.get("description", ""),
-    )
+    outputs = []
+    for record in records:
+        class_params = _parse_class_parameters(record.get("ip_class_parameters", ""))
+        outputs.append(
+            GetIpAddressOutput(
+                address=params.address,
+                ip_id=str(record.get("ip_id", "")),
+                subnet=record.get("subnet_name", ""),
+                space=record.get("site_name", ""),
+                status=record.get("multistatus", ""),
+                hostname=record.get("name", ""),
+                mac_address=record.get("mac_addr", ""),
+                ddi_class=record.get("ip_class_name", ""),
+                description=class_params.get("description", ""),
+                raw_json=json.dumps(record),
+            )
+        )
+    return outputs
 
 
 # "get dns record" is not implemented — no record-level DNS service exists on
@@ -390,6 +474,7 @@ def get_ip_address(
 
 class ListSubnetsParams(Params):
     name: str = Param(description="Subnet name to look up in SOLIDserver's IPAM (e.g. '10.20.30.0/24').", required=True)
+    limit: int = Param(description=LIMIT_DESCRIPTION, required=False, default=DEFAULT_LIMIT)
 
 
 class ListSubnetsOutput(ActionOutput):
@@ -397,6 +482,7 @@ class ListSubnetsOutput(ActionOutput):
     subnet_name: str = OutputField()
     parent_subnet: str = OutputField()
     space: str = OutputField()
+    tree_path: str = OutputField()
     start_address: str = OutputField(cef_types=["ip"])
     end_address: str = OutputField(cef_types=["ip"])
     size: str = OutputField()
@@ -407,7 +493,7 @@ class ListSubnetsOutput(ActionOutput):
 
 @app.action(
     name="list subnets",
-    description="Look up a subnet in SOLIDserver's IPAM by name (parent, space, address range, size, class) for enrichment. Output field names follow ip_address_list's confirmed subnet_* conventions but ip_block_subnet_list's own field set is not independently vendor-confirmed — check raw_json if a named field comes back empty.",
+    description="Look up a subnet in SOLIDserver's IPAM by name (parent, space, address range, size, class) for enrichment. Returns one row per matching subnet -- raise 'limit' above the default of 1 to see them all. Output field names follow ip_address_list's confirmed subnet_* conventions but ip_block_subnet_list's own field set is not independently vendor-confirmed — check raw_json if a named field comes back empty.",
     action_type="investigate",
     read_only=True,
 )
@@ -415,37 +501,55 @@ def list_subnets(
     params: ListSubnetsParams,
     soar: SOARClient,
     asset: Asset,
-) -> ListSubnetsOutput:
+) -> list[ListSubnetsOutput]:
+    limit = _validate_int(params.limit, "limit")
     records = _ensure_list(
         _request(
             asset,
             "GET",
             "/rest/ip_block_subnet_list",
-            params={"WHERE": f"subnet_name='{_sql_escape(params.name)}'"},
+            # The WHERE column and the SELECT column genuinely differ on
+            # this service: the record comes back with its name under "name",
+            # but the filterable column is "subnet_name". Vendor-confirmed
+            # against the real APIM -- filtering on "name" (the earlier
+            # assumption that WHERE matches SELECT) does not work.
+            # Other confirmed-filterable columns, if this ever needs them:
+            # subnet_id, parent_subnet_name, parent_site_name,
+            # start_ip_addr/end_ip_addr (hex), start_hostaddr/end_hostaddr (IP).
+            params={"WHERE": f"subnet_name='{_sql_escape(params.name)}'", "limit": limit},
         ),
         "ip_block_subnet_list",
     )
     if not records:
         raise ActionFailure(f"No subnet found in SOLIDserver for {params.name}")
-    record = records[0]
-    class_params = _parse_class_parameters(record.get("subnet_class_parameters", ""))
 
-    return ListSubnetsOutput(
-        subnet_id=record.get("subnet_id", ""),
-        subnet_name=record.get("subnet_name", params.name),
-        parent_subnet=record.get("parent_subnet_name", ""),
-        space=record.get("site_name", ""),
-        start_address=record.get("subnet_start_ip_addr", ""),
-        end_address=record.get("subnet_end_ip_addr", ""),
-        size=str(record.get("subnet_size", "")),
-        ddi_class=record.get("subnet_class_name", ""),
-        description=class_params.get("description", ""),
-        raw_json=json.dumps(record),
-    )
+    outputs = []
+    for record in records:
+        class_params = _parse_class_parameters(record.get("subnet_class_parameters", ""))
+        outputs.append(
+            ListSubnetsOutput(
+                subnet_id=str(record.get("subnet_id", "")),
+                # "name" is the subnet's own identity field on
+                # ip_block_subnet_list -- not "subnet_name", which is the
+                # guess borrowed from ip_subnet_list's public docs.
+                subnet_name=record.get("name", params.name),
+                parent_subnet=record.get("parent_subnet_name", ""),
+                space=record.get("site_name", ""),
+                tree_path=record.get("tree_path", ""),
+                start_address=record.get("subnet_start_ip_addr", ""),
+                end_address=record.get("subnet_end_ip_addr", ""),
+                size=str(record.get("subnet_size", "")),
+                ddi_class=record.get("subnet_class_name", ""),
+                description=class_params.get("description", ""),
+                raw_json=json.dumps(record),
+            )
+        )
+    return outputs
 
 
 class GetIpPoolParams(Params):
     name: str = Param(description="Pool name to look up in SOLIDserver's IPAM.", required=True)
+    limit: int = Param(description=LIMIT_DESCRIPTION, required=False, default=DEFAULT_LIMIT)
 
 
 class GetIpPoolOutput(ActionOutput):
@@ -470,36 +574,47 @@ def get_ip_pool(
     params: GetIpPoolParams,
     soar: SOARClient,
     asset: Asset,
-) -> GetIpPoolOutput:
+) -> list[GetIpPoolOutput]:
+    limit = _validate_int(params.limit, "limit")
     records = _ensure_list(
         _request(
             asset,
             "GET",
             "/rest/ip_pool_list",
-            params={"WHERE": f"pool_name='{_sql_escape(params.name)}'"},
+            params={"WHERE": f"pool_name='{_sql_escape(params.name)}'", "limit": limit},
         ),
         "ip_pool_list",
     )
     if not records:
         raise ActionFailure(f"No IP pool found in SOLIDserver for {params.name}")
-    record = records[0]
-    class_params = _parse_class_parameters(record.get("pool_class_parameters", ""))
 
-    return GetIpPoolOutput(
-        pool_id=record.get("pool_id", ""),
-        pool_name=record.get("pool_name", params.name),
-        subnet=record.get("subnet_name", ""),
-        space=record.get("site_name", ""),
-        start_address=record.get("start_hostaddr", ""),
-        end_address=record.get("end_hostaddr", ""),
-        ddi_class=record.get("pool_class_name", ""),
-        description=class_params.get("description", ""),
-        raw_json=json.dumps(record),
-    )
+    outputs = []
+    for record in records:
+        class_params = _parse_class_parameters(record.get("pool_class_parameters", ""))
+        outputs.append(
+            GetIpPoolOutput(
+                pool_id=str(record.get("pool_id", "")),
+                pool_name=record.get("pool_name", params.name),
+                subnet=record.get("subnet_name", ""),
+                space=record.get("site_name", ""),
+                start_address=record.get("start_hostaddr", ""),
+                end_address=record.get("end_hostaddr", ""),
+                ddi_class=record.get("pool_class_name", ""),
+                description=class_params.get("description", ""),
+                raw_json=json.dumps(record),
+            )
+        )
+    return outputs
 
 
 class ListAliasesParams(Params):
-    ip_id: int = Param(description="Internal SOLIDserver ip_id of the address to list aliases for (from 'get ip address' output).", required=True)
+    # str, not int: "get ip address" emits ip_id as a string output field, and a
+    # str param is what makes that chain actually wireable in the VPE editor
+    # (the editor will not bind a string datapath to a numeric parameter).
+    # _validate_int() below still enforces it is a whole number before it is
+    # interpolated into the URL path.
+    ip_id: str = Param(description="Internal SOLIDserver ip_id of the address to list aliases for (from 'get ip address' output).", required=True)
+    limit: int = Param(description=LIMIT_DESCRIPTION, required=False, default=DEFAULT_LIMIT)
 
 
 class ListAliasesOutput(ActionOutput):
@@ -510,7 +625,7 @@ class ListAliasesOutput(ActionOutput):
 
 @app.action(
     name="list aliases",
-    description="List DNS aliases for a known SOLIDserver ip_id (chain off 'get ip address' output). Field names are inferred, NOT independently vendor-confirmed — check raw_json if alias_name comes back empty.",
+    description="List DNS aliases for a known SOLIDserver ip_id (chain off 'get ip address' output). Returns one row per alias -- raise 'limit' above the default of 1 to see them all. Field names are inferred, NOT independently vendor-confirmed — check raw_json if alias_name comes back empty.",
     action_type="investigate",
     read_only=True,
 )
@@ -518,19 +633,24 @@ def list_aliases(
     params: ListAliasesParams,
     soar: SOARClient,
     asset: Asset,
-) -> ListAliasesOutput:
+) -> list[ListAliasesOutput]:
+    ip_id = _validate_int(params.ip_id, "ip_id")
+    limit = _validate_int(params.limit, "limit")
     records = _ensure_list(
-        _request(asset, "GET", f"/rest/ip_alias_list/ip_id/{params.ip_id}"),
+        _request(asset, "GET", f"/rest/ip_alias_list/ip_id/{ip_id}", params={"limit": limit}),
         "ip_alias_list",
     )
     if not records:
-        raise ActionFailure(f"No aliases found in SOLIDserver for ip_id {params.ip_id}")
+        raise ActionFailure(f"No aliases found in SOLIDserver for ip_id {ip_id}")
 
-    return ListAliasesOutput(
-        ip_id=str(params.ip_id),
-        alias_name=records[0].get("alias_name", ""),
-        raw_json=json.dumps(records),
-    )
+    return [
+        ListAliasesOutput(
+            ip_id=str(ip_id),
+            alias_name=record.get("alias_name", ""),
+            raw_json=json.dumps(record),
+        )
+        for record in records
+    ]
 
 
 if __name__ == "__main__":

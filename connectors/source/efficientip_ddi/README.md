@@ -33,6 +33,21 @@ vendor-confirmed for IPv4). Playbook design that consumes this connector's
 actions hasn't been done yet — this connector is a prerequisite step,
 built first per user request.
 
+**Confirmed live (2026-08-26): `limit` matters, not just `WHERE`.** The user
+tested directly against the real APIM: `GET /rest/ip_address_list?limit=5`
+(no `WHERE` at all) returns fine, but the same call with **neither** `WHERE`
+nor `limit` times out server-side — the backend appears to be doing a full,
+unbounded scan/dump without one. A single-record lookup via
+`WHERE=ip_addr='<hex>'` (e.g. `WHERE=ip_addr='0a4f181f'`) also works, as
+already used here. `test_connectivity` was calling `ip_block_subnet_list`
+completely bare (no `WHERE`, no `limit`) — exactly the reported failure
+shape — so it's fixed to send `limit=1`. `get_ip_address`/`list_subnets`/
+`get_ip_pool`'s existing `WHERE=`-filtered calls now also send `limit=1`
+defensively, since it's **not yet confirmed** whether `WHERE` alone is
+sufficient to bound those queries on the real backend or whether `limit` is
+required alongside it too — see the connector's own next-steps entry for
+the specific airgapped tests that would settle this.
+
 ______________________________________________________________________
 
 ## Auth model (3 layers, every request)
@@ -151,6 +166,36 @@ the same wrong names, so everything "passed" locally):
 - `list aliases`: the alias name field is `alias_name`, not `ip_alias`
   (`ip_alias` is a real field, but on `ip_address_list`, not
   `ip_alias_list`).
+
+### 2026-08-27 — `ip_block_subnet_list`'s filter column is `subnet_name`, not `name`
+
+Vendor-confirmed. `list subnets` had been sending `WHERE=name='<subnet>'`,
+which does not filter: on this service `name` is only the **SELECT** column
+(what the record comes back under), and the **filterable** column is
+`subnet_name`. The two genuinely differ here, so the usual "the WHERE column
+matches the SELECT column" convention does not hold — that assumption shipped
+at 1.0.5 as an explicit, commented hypothesis and is now disproven. Fixed in
+1.0.8 (classic twin 1.0.6).
+
+Full set of filterable columns on this service:
+
+| Column | Value form |
+|---|---|
+| `subnet_name` | subnet name, e.g. `10.20.30.0/24` |
+| `subnet_id` | internal id |
+| `parent_subnet_name` | parent subnet's name |
+| `parent_site_name` | site/space name |
+| `start_ip_addr` / `end_ip_addr` | hex-encoded address |
+| `start_hostaddr` / `end_hostaddr` | dotted IP |
+
+Note this was undetectable locally in **both** directions: the mock matched on
+`name`, so the wrong key passed, and it also falls through to returning every
+record when a `WHERE` does not match — so even a probe asking "did it return a
+row?" would have answered yes for either key. The mock now matches
+`subnet_name` only and deliberately does not also accept `name`.
+
+Also confirmed the same day: the response is a bare JSON array (which is what
+`_ensure_list()` assumes), and `limit=1` returns exactly one record.
 
 `ip_block_subnet_list` and `ip_alias_list` are still not independently
 confirmed against this org's real APIM — the current public docs only

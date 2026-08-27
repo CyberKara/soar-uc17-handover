@@ -10,7 +10,7 @@
     "logo_dark": "logo_dark.svg",
     "publisher": "Ted",
     "license": "Copyright (c) 2026",
-    "app_version": "1.0.0",
+    "app_version": "1.0.6",
     "utctime_updated": "2026-08-26T00:00:00.000000Z",
     "package_name": "phantom_efficientip_ddi_classic",
     "main_module": "efficientip_ddi_classic_connector.py",
@@ -104,26 +104,107 @@
                     "data_type": "string",
                     "required": true,
                     "order": 0,
-                    "contains": ["ip"]
+                    "contains": [
+                        "ip"
+                    ]
+                },
+                "limit": {
+                    "description": "Maximum number of records to return (default 1). Must be a positive whole number -- an unbounded call times out server-side on the real APIM, so a limit always goes on the wire.",
+                    "data_type": "numeric",
+                    "required": false,
+                    "default": 1,
+                    "order": 1
                 }
             },
             "output": [
-                {"data_path": "action_result.parameter.address", "data_type": "string", "contains": ["ip"]},
-                {"data_path": "action_result.data.*.address", "data_type": "string", "contains": ["ip"]},
-                {"data_path": "action_result.data.*.ip_id", "data_type": "string"},
-                {"data_path": "action_result.data.*.subnet", "data_type": "string"},
-                {"data_path": "action_result.data.*.space", "data_type": "string"},
-                {"data_path": "action_result.data.*.status", "data_type": "string"},
-                {"data_path": "action_result.data.*.hostname", "data_type": "string", "contains": ["host name"]},
-                {"data_path": "action_result.data.*.mac_address", "data_type": "string", "contains": ["mac address"]},
-                {"data_path": "action_result.data.*.ddi_class", "data_type": "string"},
-                {"data_path": "action_result.data.*.description", "data_type": "string"},
-                {"data_path": "action_result.status", "data_type": "string", "example_values": ["success", "failed"]},
-                {"data_path": "action_result.message", "data_type": "string"},
-                {"data_path": "summary.total_objects", "data_type": "numeric"},
-                {"data_path": "summary.total_objects_successful", "data_type": "numeric"}
+                {
+                    "data_path": "action_result.parameter.address",
+                    "data_type": "string",
+                    "contains": [
+                        "ip"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.limit",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.address",
+                    "data_type": "string",
+                    "contains": [
+                        "ip"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.ip_id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.ip_addr",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.subnet_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.site_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.multistatus",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.name",
+                    "data_type": "string",
+                    "contains": [
+                        "host name"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.mac_addr",
+                    "data_type": "string",
+                    "contains": [
+                        "mac address"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.ip_class_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.ip_class_parameters",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.description",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failed"
+                    ]
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric"
+                }
             ],
-            "render": {"type": "table"},
+            "render": {
+                "type": "table"
+            },
             "versions": "EQ(*)"
         },
         {
@@ -138,26 +219,92 @@
                     "data_type": "string",
                     "required": true,
                     "order": 0
+                },
+                "limit": {
+                    "description": "Maximum number of records to return (default 1). Must be a positive whole number -- an unbounded call times out server-side on the real APIM, so a limit always goes on the wire.",
+                    "data_type": "numeric",
+                    "required": false,
+                    "default": 1,
+                    "order": 1
                 }
             },
             "output": [
-                {"data_path": "action_result.parameter.name", "data_type": "string"},
-                {"data_path": "action_result.data.*.subnet_id", "data_type": "string"},
-                {"data_path": "action_result.data.*.subnet_name", "data_type": "string"},
-                {"data_path": "action_result.data.*.parent_subnet", "data_type": "string"},
-                {"data_path": "action_result.data.*.space", "data_type": "string"},
-                {"data_path": "action_result.data.*.start_address", "data_type": "string", "contains": ["ip"]},
-                {"data_path": "action_result.data.*.end_address", "data_type": "string", "contains": ["ip"]},
-                {"data_path": "action_result.data.*.size", "data_type": "string"},
-                {"data_path": "action_result.data.*.ddi_class", "data_type": "string"},
-                {"data_path": "action_result.data.*.description", "data_type": "string"},
-                {"data_path": "action_result.data.*.raw_json", "data_type": "string"},
-                {"data_path": "action_result.status", "data_type": "string", "example_values": ["success", "failed"]},
-                {"data_path": "action_result.message", "data_type": "string"},
-                {"data_path": "summary.total_objects", "data_type": "numeric"},
-                {"data_path": "summary.total_objects_successful", "data_type": "numeric"}
+                {
+                    "data_path": "action_result.parameter.name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.limit",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.subnet_id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.parent_subnet_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.site_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.tree_path",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.subnet_start_ip_addr",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.subnet_end_ip_addr",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.subnet_size",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.subnet_class_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.subnet_class_parameters",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.description",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failed"
+                    ]
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric"
+                }
             ],
-            "render": {"type": "table"},
+            "render": {
+                "type": "table"
+            },
             "versions": "EQ(*)"
         },
         {
@@ -172,25 +319,90 @@
                     "data_type": "string",
                     "required": true,
                     "order": 0
+                },
+                "limit": {
+                    "description": "Maximum number of records to return (default 1). Must be a positive whole number -- an unbounded call times out server-side on the real APIM, so a limit always goes on the wire.",
+                    "data_type": "numeric",
+                    "required": false,
+                    "default": 1,
+                    "order": 1
                 }
             },
             "output": [
-                {"data_path": "action_result.parameter.name", "data_type": "string"},
-                {"data_path": "action_result.data.*.pool_id", "data_type": "string"},
-                {"data_path": "action_result.data.*.pool_name", "data_type": "string"},
-                {"data_path": "action_result.data.*.subnet", "data_type": "string"},
-                {"data_path": "action_result.data.*.space", "data_type": "string"},
-                {"data_path": "action_result.data.*.start_address", "data_type": "string", "contains": ["ip"]},
-                {"data_path": "action_result.data.*.end_address", "data_type": "string", "contains": ["ip"]},
-                {"data_path": "action_result.data.*.ddi_class", "data_type": "string"},
-                {"data_path": "action_result.data.*.description", "data_type": "string"},
-                {"data_path": "action_result.data.*.raw_json", "data_type": "string"},
-                {"data_path": "action_result.status", "data_type": "string", "example_values": ["success", "failed"]},
-                {"data_path": "action_result.message", "data_type": "string"},
-                {"data_path": "summary.total_objects", "data_type": "numeric"},
-                {"data_path": "summary.total_objects_successful", "data_type": "numeric"}
+                {
+                    "data_path": "action_result.parameter.name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.limit",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.pool_id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.pool_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.subnet_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.site_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.start_hostaddr",
+                    "data_type": "string",
+                    "contains": [
+                        "ip"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.end_hostaddr",
+                    "data_type": "string",
+                    "contains": [
+                        "ip"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.pool_class_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.pool_class_parameters",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.description",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failed"
+                    ]
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric"
+                }
             ],
-            "render": {"type": "table"},
+            "render": {
+                "type": "table"
+            },
             "versions": "EQ(*)"
         },
         {
@@ -202,22 +414,66 @@
             "parameters": {
                 "ip_id": {
                     "description": "Internal SOLIDserver ip_id of the address to list aliases for (from 'get ip address' output)",
-                    "data_type": "numeric",
+                    "data_type": "string",
                     "required": true,
                     "order": 0
+                },
+                "limit": {
+                    "description": "Maximum number of records to return (default 1). Must be a positive whole number -- an unbounded call times out server-side on the real APIM, so a limit always goes on the wire.",
+                    "data_type": "numeric",
+                    "required": false,
+                    "default": 1,
+                    "order": 1
                 }
             },
             "output": [
-                {"data_path": "action_result.parameter.ip_id", "data_type": "numeric"},
-                {"data_path": "action_result.data.*.ip_id", "data_type": "string"},
-                {"data_path": "action_result.data.*.alias_name", "data_type": "string", "contains": ["host name"]},
-                {"data_path": "action_result.data.*.raw_json", "data_type": "string"},
-                {"data_path": "action_result.status", "data_type": "string", "example_values": ["success", "failed"]},
-                {"data_path": "action_result.message", "data_type": "string"},
-                {"data_path": "summary.total_objects", "data_type": "numeric"},
-                {"data_path": "summary.total_objects_successful", "data_type": "numeric"}
+                {
+                    "data_path": "action_result.parameter.ip_id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.limit",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.ip_alias_id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.ip_id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.alias_name",
+                    "data_type": "string",
+                    "contains": [
+                        "host name"
+                    ]
+                },
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failed"
+                    ]
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric"
+                }
             ],
-            "render": {"type": "table"},
+            "render": {
+                "type": "table"
+            },
             "versions": "EQ(*)"
         }
     ]

@@ -16,7 +16,7 @@ same `/kara-do-uc-create` session.
 
 **No real SOLIDserver/APIM instance exists.** The connector's only backend is
 `soar8/migration/mock-backend/mock_efficientip_ddi.py` (:8447), now deployed as
-`mock-efficientip-ddi.service` on the ansible controller (`<<SET ME — this was the LAB's own internal address, not a real target address>>`, mTLS
+`mock-efficientip-ddi.service` on the ansible controller (`<<REDACTED lab-internal address>>`, mTLS
 left enabled — matching the real APIM's requirement, unlike the other mocks'
 `--no-mtls` convenience), same pattern as the existing mock services, firewalled
 to soar8's source IP only (Ansible-side fix, 2026-08-25 — see ansible project's
@@ -134,6 +134,19 @@ any other playbook in this repo calling `save_playbook_output_data()` outside
 `on_finish` would hit the same RuntimeError on a real run; worth a repo-wide
 grep, not chased here (out of UC17's scope).
 
+> **Repo-wide grep DONE 2026-08-27** (commit `dd6bba9`). Only offender was
+> `tie_attack_detail.py`'s `build_enrichment_note`. But the audit turned up a
+> second, worse problem in the fix *itself*: moving the call into `on_finish`
+> is not sufficient, because `on_finish` was written with no
+> `## Custom Code Start/End` markers. `userCode` is built only from text
+> between those markers, so the call lived in `.py` alone — it deploys and runs,
+> but the first VPE open-and-save regenerates `on_finish` empty and the playbook
+> silently emits **no output at all**. That would have fired on this very
+> document's outstanding "VPE GUI open-and-look pass". `check_usercode_sync.py`
+> reported clean throughout because it skipped marker-less functions; it now
+> reports `NOMARKERS` and exits non-zero. Fixed here and in three `tenable_ad`
+> playbooks. See `docs/vpe-dev/constraints.md`.
+
 **Live-verified against soar8 + mock (container 1835, playbook id 672),
 4 real `/rest/playbook_run` calls:**
 - `ip=10.20.30.40` (has alias): full chain, all 9 output fields populated
@@ -159,6 +172,215 @@ grep, not chased here (out of UC17's scope).
   saved output `status: error`, overall run `status: success` (no action ever
   ran, nothing to fail).
 
-Not yet done: VPE GUI open-and-look pass (no known blocker, just not
-performed from this session); no parent UC currently chains into this per
-resolved question 3.
+No parent UC currently chains into this, per resolved question 3.
+
+---
+
+## Open items (from the 2026-08-27 code review)
+
+### Resolved 2026-08-27 (connector v1.0.7 / classic v1.0.5 — built, NOT yet installed)
+
+- [x] **`list aliases` / `list subnets` returned only `records[0]`.** All four
+  record-returning actions on both connectors now emit one row per record
+  (`list[ActionOutput]` on the SDK side, a per-record `add_data()` loop on the
+  classic side, with `total_objects` reporting the true count instead of a
+  hardcoded `1`).
+- [x] **`limit` is now a real action parameter** (numeric, optional, default 1)
+  on all four, replacing the hardcoded `limit=1` — this was the already-agreed
+  design from 2026-08-26 and it is also what makes the multi-record fix
+  reachable, since `limit=1` would otherwise guarantee the truncation stayed.
+  A bound still always goes on the wire (unbounded calls time out on the real
+  APIM); raising it is now the caller's to do. At the default, behavior is
+  identical to v1.0.6, so nothing calling these actions today changes.
+  `test connectivity` keeps a fixed `limit=1` — no parameter surface.
+- [x] **`ip_id` type split.** `list aliases`' parameter is now a string on both
+  connectors, matching `get ip address`' string output, so the chain the action
+  descriptions instruct users to build is actually wireable in the VPE.
+- [x] **Classic `param["ip_id"]` interpolated raw into the URL path.** Both
+  connectors now run it through a `_validate_int()` (the `proofpoint_trap`
+  `_validate_integer()` precedent), so a float `1001.0` can no longer become
+  `/rest/ip_alias_list/ip_id/1001.0` and a false "no aliases". `1001.5` is
+  rejected rather than truncated.
+- [x] **`_ip_to_hex()` raised a bare `ValueError`** for a hostname/CIDR/typo.
+  Both connectors now fail the action cleanly with a message saying what the
+  parameter actually takes, and without calling the API at all.
+- [x] **Mock `_WHERE_RE` never un-doubled `''`.** Fixed in both mock copies,
+  which now also honor `limit`, seed a two-alias IP, and seed a pool name
+  containing an apostrophe — the escaping path previously had no seed data that
+  could exercise it.
+- [x] **The escaping path had no regression coverage.** Added
+  `efficientip_ddi_classic/tests/` (23 tests) and
+  `soar-connectors/test/test_mock_efficientip_ddi.py` (16 tests). This paid for
+  itself immediately: the float-`ip_id` test failed against the first draft of
+  `_validate_int()`, which used `int(str(value))` and so rejected `1001.0` —
+  exactly the case it was written to absorb.
+- [x] **Playbook `finalize()` kept only `alias_result[0][0]`.** Now collects
+  every alias. Output spec gains `alias_names` (comma-separated, all) and
+  `alias_count`; `alias_name` still carries the first, so existing callers are
+  unaffected. The summary note's line is relabelled "Aliases".
+- [x] **`check_ip_found` gated on `ip_id != ""` only.** Now also requires
+  `get_ip_address:action_result.status == "success"`, matching what the
+  Architecture section always said. Fixed in both the `.py` and the decision
+  node's JSON conditions (a native block's config does not live in `userCode`,
+  so `check_usercode_sync.py --fix` would not have caught it).
+- [x] **`docs/dev-rules.md` inventory row was stale** (app id 204,
+  `get dns record`, "no playbook built yet"). Rewritten, and
+  `efficientip_ddi_classic` added to the table for the first time.
+- [x] **FR-01 exemption for the classic twin was unrecorded.** Now written into
+  FR-01 itself as the one standing exemption, with its scope ("not a maintained
+  implementation, do not extend") and an explicit removal condition.
+
+### Found while doing the above — corrects a standing project belief
+
+- [x] **The "NFR-09 `soarapps package build` wheel-drop bug" is not a bug.**
+  The 7 omitted packages (`requests`, `urllib3`, `certifi`, `idna`,
+  `charset_normalizer`, `beautifulsoup4`, `soupsieve`) are entries in the SDK's
+  own `DEPENDENCIES_TO_SKIP`, documented in its source as *"provided by the
+  Python runner"* and sourced from Splunk's SOAR FAQ. It therefore happens on
+  **every** build by design — which is why three sessions of hand-re-adding the
+  wheels each silently reverted on the next rebuild. Corrected in dev-rules
+  NFR-09, and automated: new `soar-connectors/tools/build_sdk_app.py` runs the
+  SDK's own build with the skip-list emptied and then verifies the result,
+  failing non-zero if any platform-provided wheel is missing. The v1.0.7
+  package it produces has a wheel set identical to the last known-good build
+  (65 packages).
+- [ ] **Still unresolved:** the real appliance threw `ModuleNotFoundError:
+  requests` on a build that lacked those wheels, which contradicts the SDK's
+  skip-list premise. We keep bundling them until that is settled **against the
+  real appliance** — `build_sdk_app.py --stock` builds the SDK-stock variant for
+  exactly that A/B test.
+
+### Shipped 2026-08-27 (later still)
+
+The user uninstalled all three EfficientIP apps in the GUI — the stale 204 **and**
+both live ones — then approved a clean-slate reinstall.
+
+- [x] **App 204 uninstalled by the user**, closing the item REST could never do.
+  Left disabled; the reinstall did not touch it.
+- [x] **Connectors installed in place** via `tools/install_app.sh`:
+  `efficientip_ddi` v1.0.7 → app id 205, `efficientip_ddi_classic` v1.0.5 → app
+  id 206. Both `disabled: false`, 5 registered actions each (checked on
+  `/rest/app_action?_filter_app=`, the endpoint that actually reports them).
+- [x] **Assets re-bound.** Uninstalling orphaned assets 19 and 22 (`app: None`
+  on the detail endpoint, not just the list view) and **reinstalling did not
+  re-bind them** — worth knowing, since that was the obvious assumption. Their
+  `configuration` survived fully intact, so no credentials had to be re-entered.
+  Fixed with `POST /rest/asset/<id> {"app_id": <app>}`, a shape first tested on
+  a throwaway asset because the REST-quirks memory warns that a `POST` without
+  `configuration` resets every field. It does not, for this shape: all 9 keys
+  and their byte-lengths were unchanged, on the scratch asset and then on both
+  real ones. Scratch asset deleted afterwards.
+- [x] **Playbook deployed.** `efficientip_ddi_enrich` id=**678** v6,
+  `passed_validation: true`, `active: false` (correct for a data playbook).
+  Verified the *live* copy carries this session's changes rather than trusting
+  the deploy: grepped the post-deploy assembled snapshot for `alias_names`,
+  `alias_count`, the multi-alias `collect2` loop, the two-condition
+  `check_ip_found` and the "Aliases" label, and read `output_spec` back over
+  REST (12 fields, both new ones present). **This closes the GUI-save
+  `on_finish` hazard on the live copy**, which was the "do this first" item.
+
+### Still open
+
+- [ ] **Live functional test of the multi-record fix — blocked on a mock
+  restart.** `mock-efficientip-ddi.service` is active on the ansible controller
+  and reachable from soar8 (asset 19 → `https://<<REDACTED lab-internal address>>:8447`), but the
+  running process predates this session's edits: queried directly it still
+  returns **1** alias for `ip_id` 1001, not the new 2-alias seed. Restart the
+  unit, then run `get ip address` → `list aliases` with `limit` > 1 from the
+  SOAR UI and confirm two aliases come back. Not restarted — service restarts
+  need explicit approval.
+### GUI-test readiness (2026-08-27, prepared)
+
+Everything needed for a GUI pass is deployed and pre-verified over REST, so a
+GUI run should be a confirmation rather than a debugging session.
+
+- Live ids: `efficientip_ddi_enrich` **684** v8, `efficientip_ddi_action_test`
+  **685** v5, `efficientip_ddi_classic_action_test` **686** v4 — all
+  `passed_validation: true`. Apps: 205 v1.0.8 (SDK), 206 v1.0.6 (classic), 5
+  actions each, assets 19/22 bound with `verify_ssl: false`.
+- **Verified end to end after the mock restart:** `list aliases` returns 2 rows
+  through SOAR, the enrich playbook reports `alias_count: 2` with both names,
+  8/8 actions PASS on both connectors. `./tools/uc17_verify.sh` runs the lot.
+- **Both action-test playbooks updated for the new connector contract.** Their
+  `list aliases` node still declared `ip_id` as `data_type: "numeric"`, which is
+  exactly what stops the VPE binding `get ip address`'s now-string `ip_id`
+  output to it — fixed to `string` in both. They also never passed `limit`, so
+  at the default of 1 they could not tell a working multi-record result from
+  the old truncation bug; both now pass `limit: "10"` and their note reports the
+  alias **count** and every name, with a line saying what a count of 1 would
+  mean.
+- Pre-run over REST: all 8 actions across both connectors PASS, and
+  `efficientip_ddi_enrich` completes emitting `alias_names`/`alias_count`.
+- [ ] **[!] Every one of the three playbooks has an action node whose `ip_id`
+  is bound to a wildcard datapath** (`...:action_result.data.*.ip_id`). Per the
+  standing user decision in `[[project-soar-gui-regen-action-param-corruption]]`,
+  opening any of them in the VPE and saving — *even just moving a node* —
+  regenerates the action-node code and can comma-join that list into one
+  malformed parameter. **A GUI save on these is a mandatory redeploy**, not a
+  watch-for hazard: `./tools/deploy.sh --use-case efficientip_ddi_enrich`.
+  `tools/uc17_verify.sh hazards` re-prints this list.
+- [ ] VPE GUI open-and-look pass on **681** (never performed). Confirm zero live
+  GUI warnings per `[[feedback-playbook-build-process-gate]]`, then redeploy if
+  anything was saved.
+- [x] Mock service restarted; live seed confirmed at 2 aliases, and
+  `list subnets` now passes *genuinely* rather than by fallthrough.
+- [x] **The enrich playbook itself was stale too — caught only by running it.**
+  After the restart the raw action returned 2 rows while the playbook still
+  reported `alias_count: 1`: its `list aliases` node passed no `limit` (so the
+  connector default of 1 truncated) and still declared `ip_id` as `numeric`.
+  The same two defects were in all three playbooks; the enrich one was missed
+  on the first pass because only the two test playbooks were being reviewed.
+  Now sends `limit: "50"` — bounded but generous, since its own
+  `alias_names`/`alias_count` outputs are meaningless at 1 and an unbounded call
+  times out on the real APIM.
+- [x] **Mock hardened so this class of bug fails loudly.** An unrecognised
+  `WHERE` column used to return every record — which is why `WHERE=name=` passed
+  locally for two versions — and is now a 400 naming the valid columns. The mock
+  also encodes the vendor-confirmed filter-to-record-key mapping including the
+  two WHERE≠SELECT cases (`subnet_name`→`name`, `parent_site_name`→`site_name`).
+  Deliberately stricter than the real API, whose behavior for an unknown column
+  is unknown: the permissive option demonstrably hides real bugs.
+- [x] ~~`WHERE`-filter-key hypothesis for `ip_block_subnet_list`~~ —
+  **RESOLVED 2026-08-27 by asking the user, and it was a real bug.** `name` is
+  not a filterable column at all, only the SELECT column the record returns
+  under; the filterable column is `subnet_name`. Fixed in both connectors
+  (1.0.8 / 1.0.6) and both mocks, with regression tests from both sides. The
+  mock could never have caught it: it matched on `name`, *and* it falls through
+  to returning every record on an unmatched `WHERE`, so even a probe asking
+  "did it return a row?" would have answered yes for either key.
+- [ ] Real airgapped retest of everything else — neither connector has been run
+  against the real SOLIDserver/APIM since the field-name fixes. Confirmed from
+  the user meanwhile: the response is a bare JSON array (what `_ensure_list()`
+  assumes), and `limit=1` returns exactly one record. Still unconfirmed:
+  `ip_alias_list`'s own field names — `alias_name` remains analogy-based, and
+  the user had no `ip_id` with aliases to check against, so this cannot be
+  settled from their side yet. `raw_json` covers it meanwhile.
+- [ ] The two action-test playbooks are 271 lines differing by ~5 (the `ASSET`
+  constant and 4 note titles); `ASSET` as a `playbook_input` would collapse
+  them. **Deliberately not done** — it trades a diagnostic playbook's
+  zero-argument launch for a typed input on every manual run, and touching
+  their block structure risks a GUI regression on playbooks whose only job is
+  diagnosing one. Worth revisiting only if a third connector variant appears.
+- [ ] Open design item, **now unblocked**: purpose-built `WHERE` filter
+  parameters rather than a raw passthrough param. It was blocked on the user
+  naming concrete filter needs; the 2026-08-27 answer supplied them. Confirmed
+  filterable columns on `ip_block_subnet_list`: `subnet_name`, `subnet_id`,
+  `parent_subnet_name`, `parent_site_name`, `start_ip_addr`/`end_ip_addr`
+  (hex), `start_hostaddr`/`end_hostaddr` (dotted IP). "List subnets under a
+  parent" maps to `parent_subnet_name`, "by site" to `parent_site_name`, and
+  the address pairs give a real range lookup — the exact case that motivated
+  making `limit` caller-controlled, since a range filter can legitimately
+  return many rows. Not started; needs a design pass on which of these become
+  named parameters.
+
+### Verification performed this session (soar8 + mock only)
+
+- 23 classic-connector unit tests, 16 mock-server tests — all passing.
+- 13 live end-to-end checks driving **both** connectors' real request path
+  against a running mock over real mTLS: multi-alias retrieval at `limit=10`,
+  bounding at `limit=1`, the apostrophe-name escaping round trip, `204 No
+  Content` → empty list, float-`ip_id` absorption, hostname rejection, and the
+  classic twin's raw pass-through keeping real SOLIDserver key names.
+- `check_usercode_sync.py` clean across all 3 UC17 playbooks.
+- SDK manifest regenerated and inspected: `ip_id` string, `limit` numeric
+  default 1 on all four data actions, `data.*` output shape unchanged.

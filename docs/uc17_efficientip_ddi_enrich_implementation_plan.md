@@ -1,6 +1,17 @@
+> **Note:** this copy has had 2 reference(s) to the source lab's own
+> internal addresses replaced with `<lab-address-redacted>`. They named
+> the lab that built this package, never a target system of yours.
+
 # EfficientIP DDI Enrichment (UC17) — Implementation Plan
 
-**Status:** [x] planned | [x] built | [x] E2E validated | [ ] code review fixes | [ ] VPE polish | [ ] released
+**Status:** [x] planned | [x] built | [x] E2E validated | [x] code review fixes | [x] VPE polish | [ ] released
+
+> **Live ids move on every deploy — always resolve by name, never by an id
+> written down here.** `./tools/uc17_verify.sh` does exactly that
+> (`?_filter_name=`, highest version wins); so does
+> `curl .../rest/playbook?_filter_name__icontains=efficientip`. Ids quoted in
+> the dated sections below are historical records of what was live *that day*,
+> not current state — see `[[project-soar85-gui-save-on-finish-output-clobber]]`.
 
 > Design drafted 2026-08-24, approved 2026-08-25 (open questions below resolved by
 > user). **Built + deployed + live-verified 2026-08-25 (later still)** — see
@@ -16,7 +27,7 @@ same `/kara-do-uc-create` session.
 
 **No real SOLIDserver/APIM instance exists.** The connector's only backend is
 `soar8/migration/mock-backend/mock_efficientip_ddi.py` (:8447), now deployed as
-`mock-efficientip-ddi.service` on the ansible controller (`<<REDACTED lab-internal address>>`, mTLS
+`mock-efficientip-ddi.service` on the ansible controller (`<lab-address-redacted>`, mTLS
 left enabled — matching the real APIM's requirement, unlike the other mocks'
 `--no-mtls` convenience), same pattern as the existing mock services, firewalled
 to soar8's source IP only (Ansible-side fix, 2026-08-25 — see ansible project's
@@ -281,23 +292,26 @@ both live ones — then approved a clean-slate reinstall.
 
 ### Still open
 
-- [ ] **Live functional test of the multi-record fix — blocked on a mock
-  restart.** `mock-efficientip-ddi.service` is active on the ansible controller
-  and reachable from soar8 (asset 19 → `https://<<REDACTED lab-internal address>>:8447`), but the
-  running process predates this session's edits: queried directly it still
-  returns **1** alias for `ip_id` 1001, not the new 2-alias seed. Restart the
-  unit, then run `get ip address` → `list aliases` with `limit` > 1 from the
-  SOAR UI and confirm two aliases come back. Not restarted — service restarts
-  need explicit approval.
+- [x] **Live functional test of the multi-record fix — DONE.** Was blocked on a
+  mock restart: `mock-efficientip-ddi.service` was active on the ansible
+  controller and reachable from soar8 (asset 19 → `https://<lab-address-redacted>:8447`),
+  but the running process predated the seed change and still returned **1**
+  alias for `ip_id` 1001. The unit was restarted (approved) and the chain
+  re-run: `list aliases` at `limit` > 1 returns **2 rows** through SOAR and
+  `efficientip_ddi_enrich` reports `alias_count: 2` with both names. See the
+  "GUI-test readiness" section below.
 ### GUI-test readiness (2026-08-27, prepared)
 
 Everything needed for a GUI pass is deployed and pre-verified over REST, so a
 GUI run should be a confirmation rather than a debugging session.
 
-- Live ids: `efficientip_ddi_enrich` **684** v8, `efficientip_ddi_action_test`
-  **685** v5, `efficientip_ddi_classic_action_test` **686** v4 — all
-  `passed_validation: true`. Apps: 205 v1.0.8 (SDK), 206 v1.0.6 (classic), 5
-  actions each, assets 19/22 bound with `verify_ssl: false`.
+- Live ids *at the time of this section* (2026-08-27): `efficientip_ddi_enrich`
+  684 v8, `efficientip_ddi_action_test` 685 v5,
+  `efficientip_ddi_classic_action_test` 686 v4 — all `passed_validation: true`.
+  **Superseded by later deploys; verified 2026-08-28 as 711 v18 / 712 v11 /
+  713 v10.** Resolve by name rather than trusting either set. Apps: 205 v1.0.8
+  (SDK), 206 v1.0.6 (classic), 5 actions each, assets 19/22 bound with
+  `verify_ssl: false` — those have held.
 - **Verified end to end after the mock restart:** `list aliases` returns 2 rows
   through SOAR, the enrich playbook reports `alias_count: 2` with both names,
   8/8 actions PASS on both connectors. `./tools/uc17_verify.sh` runs the lot.
@@ -311,17 +325,23 @@ GUI run should be a confirmation rather than a debugging session.
   mean.
 - Pre-run over REST: all 8 actions across both connectors PASS, and
   `efficientip_ddi_enrich` completes emitting `alias_names`/`alias_count`.
-- [ ] **[!] Every one of the three playbooks has an action node whose `ip_id`
-  is bound to a wildcard datapath** (`...:action_result.data.*.ip_id`). Per the
-  standing user decision in `[[project-soar-gui-regen-action-param-corruption]]`,
-  opening any of them in the VPE and saving — *even just moving a node* —
-  regenerates the action-node code and can comma-join that list into one
-  malformed parameter. **A GUI save on these is a mandatory redeploy**, not a
-  watch-for hazard: `./tools/deploy.sh --use-case efficientip_ddi_enrich`.
-  `tools/uc17_verify.sh hazards` re-prints this list.
-- [ ] VPE GUI open-and-look pass on **681** (never performed). Confirm zero live
-  GUI warnings per `[[feedback-playbook-build-process-gate]]`, then redeploy if
-  anything was saved.
+- [x] **The wildcard-datapath GUI-save hazard — resolved by conversion, not by
+  policing saves.** All three playbooks have an action node whose `ip_id` binds
+  to a wildcard datapath (`...:action_result.data.*.ip_id`), which is the shape
+  `[[project-soar-gui-regen-action-param-corruption]]` warns a VPE save can
+  comma-join into one malformed parameter. This section originally carried that
+  as "a GUI save here is a **mandatory redeploy**". **Superseded:** all three
+  were converted to VPE-canonical form and now pass `check_vpe_shape.py`, and
+  the user confirmed live that a save on a fully canonical playbook produces
+  **no new version at all** — SOAR computes an identical payload and stores
+  nothing. The detector is still worth running (`tools/uc17_verify.sh hazards`
+  lists the bindings) but the blanket redeploy rule no longer applies to these
+  three. Redeploy if a save *does* produce a new version:
+  `./tools/deploy.sh --use-case efficientip_ddi_enrich`.
+- [x] **VPE GUI open-and-look pass DONE 2026-08-28 — zero warnings.** Performed
+  by the user on the live copy (711 v18); everything rendered clean. This was
+  the last gate owed under `[[feedback-playbook-build-process-gate]]`, and it
+  also confirms the VPE-canonical conversion held end to end.
 - [x] Mock service restarted; live seed confirmed at 2 aliases, and
   `list subnets` now passes *genuinely* rather than by fallthrough.
 - [x] **The enrich playbook itself was stale too — caught only by running it.**

@@ -1,6 +1,6 @@
 # UC17 — EfficientIP DDI Enrichment — Air-Gapped Handover Package
 
-Generated 2026-08-27 16:14 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
+Generated 2026-08-28 16:01 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
 
 This package is self-contained — everything needed to deploy this use case by hand
 in an environment with no network access back to this repo or to `soar8`.
@@ -31,16 +31,19 @@ in an environment with no network access back to this repo or to `soar8`.
 3. **Import the playbooks** from `playbooks/*.tgz`, via Apps/Playbooks > Import in the
    target SOAR GUI. (`playbooks/source/` is the same code extracted for reading — don't
    import from there, the GUI needs the `.tgz`.)
-4. **Activate automation playbooks** and set their **Run As** user per the implementation
-   plan doc's Setup Guide (see `docs/`).
+4. **Nothing to activate.** Every playbook in this package is an input (`data`)
+   playbook — there is no automation trigger to enable and no **Run As** user to set.
+   You run these by hand from a container: open the container, then Playbooks > Run
+   Playbook and pick the one you want. See the implementation plan doc in `docs/`.
 
 ## Verification
 
-After importing everything and activating automation playbooks, trigger one run manually
-(e.g. the timer asset's manual poll, or per the implementation plan doc's trigger section)
-and confirm: a container is created and the expected child playbook(s) run to completion.
-Check `spawn.log`/`decided.log`/`actiond.log` on the target SOAR host if anything doesn't
-fire as expected.
+After importing everything, open (or create) a container carrying the artifact this use
+case reads, then run the playbook against it by hand: Playbooks > Run Playbook. See the
+implementation plan doc in `docs/` for the artifact fields each playbook expects,
+and confirm the run completes and its action results / added artifacts look right in the
+container. Check `playbook.log`/`actiond.log` on the target SOAR host if a run fails or
+an action errors.
 
 ## What was deliberately NOT exported
 

@@ -1,6 +1,6 @@
 # UC17 — EfficientIP DDI Enrichment — Paquet de transfert (déploiement air-gapped)
 
-Généré le 2026-08-27 16:14 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
+Généré le 2026-08-28 16:01 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
 
 Ce paquet est autonome — tout ce qu'il faut pour déployer ce cas d'usage manuellement
 dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
@@ -33,17 +33,21 @@ dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
 3. **Importer les playbooks** depuis `playbooks/*.tgz`, via Apps/Playbooks > Import dans
    l'interface SOAR cible. (`playbooks/source/` est le même code extrait pour lecture —
    ne pas importer depuis ce dossier, l'interface a besoin du `.tgz`.)
-4. **Activer les playbooks d'automatisation** et définir leur utilisateur **Run As** selon
-   le guide d'installation du document de plan d'implémentation (voir `docs/`).
+4. **Rien à activer.** Tous les playbooks de ce paquet sont des playbooks d'entrée
+   (`data`) — il n'y a aucun déclencheur d'automatisation à activer ni d'utilisateur
+   **Run As** à définir. Vous les lancez à la main depuis un container : ouvrez le
+   container, puis Playbooks > Run Playbook et choisissez celui voulu. Voir le document
+   de plan d'implémentation dans `docs/`.
 
 ## Vérification
 
-Une fois tout importé et les playbooks d'automatisation activés, déclenchez une exécution
-manuelle (par ex. le poll manuel de l'asset Timer, ou selon la section de déclenchement du
-document de plan d'implémentation)
-et vérifiez : qu'un container est créé et que le(s) playbook(s) enfant(s) attendu(s)
-s'exécute(nt) jusqu'au bout. Consultez `spawn.log`/`decided.log`/`actiond.log` sur l'hôte
-SOAR cible si quelque chose ne se déclenche pas comme prévu.
+Une fois tout importé, ouvrez (ou créez) un container portant l'artifact que ce cas
+d'usage lit, puis lancez le playbook à la main dessus : Playbooks > Run Playbook. Voir le
+document de plan d'implémentation dans `docs/` pour les champs d'artifact attendus par
+chaque playbook,
+et vérifiez que l'exécution se termine et que ses résultats d'action / artifacts ajoutés
+sont corrects dans le container. Consultez `playbook.log`/`actiond.log` sur l'hôte SOAR
+cible si une exécution échoue ou si une action renvoie une erreur.
 
 ## Ce qui n'a volontairement PAS été exporté
 

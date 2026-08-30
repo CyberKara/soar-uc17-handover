@@ -1,6 +1,6 @@
 # UC17 — EfficientIP DDI Enrichment — Air-Gapped Handover Package
 
-Generated 2026-08-28 16:01 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
+Generated 2026-08-29 19:54 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
 
 This package is self-contained — everything needed to deploy this use case by hand
 in an environment with no network access back to this repo or to `soar8`.
@@ -11,7 +11,7 @@ in an environment with no network access back to this repo or to `soar8`.
 
 | Path | What |
 |------|------|
-| `connectors/` | Connector app package(s): efficientip_ddi.tgz, efficientip_ddi_classic-v1.0.6.tgz |
+| `connectors/` | Connector app package(s): efficientip_ddi.tgz, efficientip_ddi_classic-v1.0.1.tgz |
 | `connectors/source/` | Same connector(s), extracted — for reading, not for import |
 | `playbooks/*.tgz` (PBs) | efficientip_ddi_enrich, efficientip_ddi_action_test, efficientip_ddi_classic_action_test |
 | `playbooks/source/` | Same CFs/playbooks, extracted — for reading, not for import |
@@ -25,9 +25,18 @@ in an environment with no network access back to this repo or to `soar8`.
    the GUI needs the `.tgz`.)
 2. **Configure assets from the templates in `assets/`** — Apps > Configure New Asset for
    each. Fields marked in a template's `redacted_fields` list are placeholders
-   (`<<SET ME...>>`) — **you must fill these in yourself** from your own vault/CMDB; they
-   were never exported with real values (SOAR encrypts `password`-type fields at rest and
-   the export process cannot read them back in usable form even in principle).
+   (`<<SET ME...>>`) — **you must fill these in yourself**; they were never exported
+   with usable values. Two different reasons appear in that list, and each placeholder
+   says which one applies:
+
+   - **Secrets** (passwords, API keys, certificates/keys) — take these from your own
+     vault/CMDB. SOAR encrypts `password`-type fields at rest, so the export process
+     cannot read them back in usable form even in principle.
+   - **Identities and addresses** (usernames, client/app ids, endpoint URLs) — these
+     are not secret, but they belonged to the source environment and are meaningless
+     here. Enter the values *your* target system expects. **An identity must match the
+     credential you enter beside it** — a real password paired with a leftover username
+     from the source environment authenticates as nothing and returns HTTP 401.
 3. **Import the playbooks** from `playbooks/*.tgz`, via Apps/Playbooks > Import in the
    target SOAR GUI. (`playbooks/source/` is the same code extracted for reading — don't
    import from there, the GUI needs the `.tgz`.)

@@ -17,13 +17,14 @@
 #
 # Same pattern as cyberark_ccp's _normalize_pem() in the UC1 handover.
 #
-# NOTE: these fingerprints are line-pinned. The classic connector's markers
-# moved 402 -> 490-492 in v1.0.6, and the SDK app gained its own copy at
-# 128-130 — so re-check these line numbers whenever either connector changes,
-# or the gate will either miss a real finding or fail the commit.
-connectors/source/efficientip_ddi_classic/efficientip_ddi_classic_connector.py:private-key:490
-connectors/source/efficientip_ddi_classic/efficientip_ddi_classic_connector.py:private-key:491
-connectors/source/efficientip_ddi_classic/efficientip_ddi_classic_connector.py:private-key:492
+# NOTE: these fingerprints are line-pinned, and they HAVE drifted every time a
+# connector changed: the classic connector's markers moved 402 -> 490-492
+# (v1.0.6) -> 582-584 (v1.0.1, after the WHERE/limit fix and the comment
+# sweep). The SDK app's have held at 128-130. Re-check both whenever either
+# connector changes, or the gate will miss a real finding or fail the commit.
+connectors/source/efficientip_ddi_classic/efficientip_ddi_classic_connector.py:private-key:582
+connectors/source/efficientip_ddi_classic/efficientip_ddi_classic_connector.py:private-key:583
+connectors/source/efficientip_ddi_classic/efficientip_ddi_classic_connector.py:private-key:584
 connectors/source/efficientip_ddi/src/app.py:private-key:128
 connectors/source/efficientip_ddi/src/app.py:private-key:129
 connectors/source/efficientip_ddi/src/app.py:private-key:130

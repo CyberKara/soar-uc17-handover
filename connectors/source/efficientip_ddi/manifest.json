@@ -1,10 +1,10 @@
 {
     "name": "efficientip_ddi",
     "description": "Analyst-driven IP/DNS lookup enrichment against EfficientIP SOLIDserver, fronted by an APIM gateway (mTLS + Basic client auth + forwarded DDI creds).",
-    "appid": "71a7abcc-75fa-4a8d-ae9d-23fb352869e4",
+    "appid": "b847c7d1-ee21-4af8-a92c-a91f5eb4b00d",
     "type": "ddi",
     "product_vendor": "EfficientIP",
-    "app_version": "1.0.8",
+    "app_version": "1.0.1",
     "license": "Copyright (c) 2026 Karabox Labs.",
     "min_phantom_version": "7.0.0",
     "package_name": "phantom_efficientip_ddi",
@@ -15,7 +15,7 @@
     "python_version": "3.13",
     "product_version_regex": ".*",
     "publisher": "Ted",
-    "utctime_updated": "2026-08-28T16:01:47.166793Z",
+    "utctime_updated": "2026-08-29T19:54:09.642088Z",
     "fips_compliant": false,
     "contributors": [],
     "configuration": {
@@ -248,23 +248,54 @@
         {
             "action": "list subnets",
             "identifier": "list_subnets",
-            "description": "Look up a subnet in SOLIDserver's IPAM by name (parent, space, address range, size, class) for enrichment. Returns one row per matching subnet -- raise 'limit' above the default of 1 to see them all. Output field names follow ip_address_list's confirmed subnet_* conventions but ip_block_subnet_list's own field set is not independently vendor-confirmed \u2014 check raw_json if a named field comes back empty.",
+            "description": "Look up subnets in SOLIDserver's IPAM (parent, space, address range, size, class) for enrichment. Only 'limit' need be set: with no filter this lists subnets bare, the same shape test connectivity uses. Optionally set AT MOST ONE filter: subnet_name, subnet_id, parent_subnet_name (lists the subnets under a parent) or site_name (lists the subnets in a space). Raise 'limit' above the default of 1 to see more than one row, which the parent/site filters and the unfiltered call usually need. Output field names follow ip_address_list's confirmed subnet_* conventions but ip_block_subnet_list's own field set is not independently vendor-confirmed \u2014 check raw_json if a named field comes back empty.",
             "type": "investigate",
             "read_only": true,
             "versions": "EQ(*)",
             "verbose": "",
             "parameters": {
-                "name": {
+                "subnet_name": {
                     "order": 0,
-                    "name": "name",
-                    "description": "Subnet name to look up in SOLIDserver's IPAM (e.g. '10.20.30.0/24').",
+                    "name": "subnet_name",
+                    "description": "Filter by subnet NAME -- the human label the subnet carries in IPAM (e.g. 'Corporate-LAN'), not its CIDR. To find a subnet by address you need the range columns, which this action does not yet expose.",
                     "data_type": "string",
-                    "required": true,
+                    "required": false,
                     "primary": false,
-                    "allow_list": false
+                    "allow_list": false,
+                    "default": ""
+                },
+                "subnet_id": {
+                    "order": 1,
+                    "name": "subnet_id",
+                    "description": "Filter by SOLIDserver subnet id.",
+                    "data_type": "string",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false,
+                    "default": ""
+                },
+                "parent_subnet_name": {
+                    "order": 2,
+                    "name": "parent_subnet_name",
+                    "description": "Filter by parent subnet name \u2014 lists the subnets underneath it.",
+                    "data_type": "string",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false,
+                    "default": ""
+                },
+                "site_name": {
+                    "order": 3,
+                    "name": "site_name",
+                    "description": "Filter by space/site name \u2014 lists the subnets belonging to it. Filters on the API's 'parent_site_name' column.",
+                    "data_type": "string",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false,
+                    "default": ""
                 },
                 "limit": {
-                    "order": 1,
+                    "order": 4,
                     "name": "limit",
                     "description": "Maximum number of records to return (default 1). Must be a positive whole number -- an unbounded call times out server-side on the real APIM, so a limit always goes on the wire.",
                     "data_type": "numeric",
@@ -288,7 +319,19 @@
                     "data_type": "string"
                 },
                 {
-                    "data_path": "action_result.parameter.name",
+                    "data_path": "action_result.parameter.subnet_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.subnet_id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.parent_subnet_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.site_name",
                     "data_type": "string"
                 },
                 {

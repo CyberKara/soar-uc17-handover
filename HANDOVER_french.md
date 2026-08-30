@@ -1,6 +1,6 @@
 # UC17 — EfficientIP DDI Enrichment — Paquet de transfert (déploiement air-gapped)
 
-Généré le 2026-08-28 16:01 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
+Généré le 2026-08-29 19:54 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
 
 Ce paquet est autonome — tout ce qu'il faut pour déployer ce cas d'usage manuellement
 dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
@@ -11,7 +11,7 @@ dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
 
 | Chemin | Contenu |
 |--------|---------|
-| `connectors/` | Paquet(s) applicatif(s) connecteur : efficientip_ddi.tgz, efficientip_ddi_classic-v1.0.6.tgz |
+| `connectors/` | Paquet(s) applicatif(s) connecteur : efficientip_ddi.tgz, efficientip_ddi_classic-v1.0.1.tgz |
 | `connectors/source/` | Même(s) connecteur(s), extrait(s) — pour lecture, pas pour import |
 | `playbooks/*.tgz` (PB) | efficientip_ddi_enrich, efficientip_ddi_action_test, efficientip_ddi_classic_action_test |
 | `playbooks/source/` | Mêmes CF/playbooks, extraits — pour lecture, pas pour import |
@@ -26,10 +26,20 @@ dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
    dossier, l'interface a besoin du `.tgz`.)
 2. **Configurer les assets à partir des modèles dans `assets/`** — Apps > Configure New Asset
    pour chacun. Les champs listés dans le `redacted_fields` d'un modèle sont des espaces
-   réservés (`<<SET ME...>>`) — **vous devez les renseigner vous-même** depuis votre propre
-   coffre-fort (vault)/CMDB ; ils n'ont jamais été exportés avec de vraies valeurs (SOAR
-   chiffre les champs de type `password` au repos et le processus d'export ne peut pas les
-   relire sous une forme utilisable, même en principe).
+   réservés (`<<SET ME...>>`) — **vous devez les renseigner vous-même** ; ils n'ont jamais
+   été exportés avec des valeurs utilisables. Deux raisons distinctes apparaissent dans
+   cette liste, et chaque espace réservé précise laquelle s'applique :
+
+   - **Secrets** (mots de passe, clés d'API, certificats/clés) — à reprendre depuis votre
+     propre coffre-fort (vault)/CMDB. SOAR chiffre les champs de type `password` au repos,
+     le processus d'export ne peut donc pas les relire sous une forme utilisable, même en
+     principe.
+   - **Identités et adresses** (noms d'utilisateur, client/app id, URL des points de
+     terminaison) — non secrètes, mais elles appartenaient à l'environnement source et
+     n'ont aucun sens ici. Saisissez les valeurs attendues par *votre* système cible.
+     **Une identité doit correspondre au justificatif saisi à côté d'elle** — un vrai mot
+     de passe associé à un nom d'utilisateur résiduel de l'environnement source ne
+     s'authentifie auprès de rien et renvoie une erreur HTTP 401.
 3. **Importer les playbooks** depuis `playbooks/*.tgz`, via Apps/Playbooks > Import dans
    l'interface SOAR cible. (`playbooks/source/` est le même code extrait pour lecture —
    ne pas importer depuis ce dossier, l'interface a besoin du `.tgz`.)

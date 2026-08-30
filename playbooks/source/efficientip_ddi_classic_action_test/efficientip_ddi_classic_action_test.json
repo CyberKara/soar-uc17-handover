@@ -143,14 +143,14 @@
                             "join": [],
                             "note": "Smoke-test branch A of 4 -- see docs/usecases/uc17_efficientip_ddi_enrich_implementation_plan.md.",
                             "customName": "run test connectivity",
-                            "description": "Exercise 'test connectivity' against the efficientip_ddi mock asset.",
+                            "description": "Exercise 'test connectivity' against the connector's mock asset.",
                             "customNameId": 0
                         },
                         "connector": "EfficientIP DDI (Classic)",
                         "actionType": "test",
                         "functionId": 1,
                         "parameters": {},
-                        "connectorId": "4e9c768b-5401-41bd-bbbb-493aac0d3d03",
+                        "connectorId": "daa10f0c-a8ee-497d-88f0-9b937e5ff5fe",
                         "functionName": "run_test_connectivity",
                         "connectorConfigs": [
                             "efficientip_ddi_classic mock"
@@ -208,7 +208,7 @@
                         "parameters": {
                             "address": "10.20.30.40"
                         },
-                        "connectorId": "4e9c768b-5401-41bd-bbbb-493aac0d3d03",
+                        "connectorId": "daa10f0c-a8ee-497d-88f0-9b937e5ff5fe",
                         "functionName": "run_get_ip_address",
                         "connectorConfigs": [
                             "efficientip_ddi_classic mock"
@@ -247,7 +247,7 @@
                             "ip_id": "run_get_ip_address:action_result.data.*.ip_id",
                             "limit": "10"
                         },
-                        "connectorId": "4e9c768b-5401-41bd-bbbb-493aac0d3d03",
+                        "connectorId": "daa10f0c-a8ee-497d-88f0-9b937e5ff5fe",
                         "functionName": "run_list_aliases",
                         "connectorConfigs": [
                             "efficientip_ddi_classic mock"
@@ -303,7 +303,7 @@
                         "action": "list subnets",
                         "advanced": {
                             "join": [],
-                            "note": "Smoke-test branch C of 4. Static test name 10.20.30.0/24 (mock seed).",
+                            "note": "Smoke-test branch C of 4. Static test name CORP_LAN-USERS (mock seed; subnet names are labels, not CIDRs).",
                             "customName": "run list subnets",
                             "description": "Exercise 'list subnets' against a known-good seed subnet name.",
                             "customNameId": 0
@@ -312,21 +312,15 @@
                         "actionType": "investigate",
                         "functionId": 6,
                         "parameters": {
-                            "name": "10.20.30.0/24"
+                            "subnet_name": "CORP_LAN-USERS"
                         },
-                        "connectorId": "4e9c768b-5401-41bd-bbbb-493aac0d3d03",
+                        "connectorId": "daa10f0c-a8ee-497d-88f0-9b937e5ff5fe",
                         "functionName": "run_list_subnets",
                         "connectorConfigs": [
                             "efficientip_ddi_classic mock"
                         ],
                         "connectorVersion": "v1",
-                        "requiredParameters": [
-                            {
-                                "field": "name",
-                                "default": "",
-                                "data_type": "string"
-                            }
-                        ]
+                        "requiredParameters": []
                     },
                     "type": "action",
                     "errors": {}
@@ -378,7 +372,7 @@
                         "parameters": {
                             "name": "finance-dhcp-pool"
                         },
-                        "connectorId": "4e9c768b-5401-41bd-bbbb-493aac0d3d03",
+                        "connectorId": "daa10f0c-a8ee-497d-88f0-9b937e5ff5fe",
                         "functionName": "run_get_ip_pool",
                         "connectorConfigs": [
                             "efficientip_ddi_classic mock"
@@ -432,7 +426,7 @@
         "schema": "5.0.5",
         "version": "8.5.0.100"
     },
-    "create_time": "2026-08-27T15:59:50.504540Z",
+    "create_time": "2026-08-29T19:52:59.925591Z",
     "draft_mode": false,
     "labels": [
         "events"

@@ -181,12 +181,20 @@ Full set of filterable columns on this service:
 
 | Column | Value form |
 |---|---|
-| `subnet_name` | subnet name, e.g. `10.20.30.0/24` |
+| `subnet_name` | the subnet's NAME -- a label, e.g. `CORP_LAN-USERS`, **not** its CIDR (user-confirmed 2026-08-29). Underscores and hyphens, no dots or slashes. To look a subnet up **by address** you need the range columns below, not this one. |
 | `subnet_id` | internal id |
 | `parent_subnet_name` | parent subnet's name |
 | `parent_site_name` | site/space name |
 | `start_ip_addr` / `end_ip_addr` | hex-encoded address |
 | `start_hostaddr` / `end_hostaddr` | dotted IP |
+
+> **Never send `WHERE` and `limit` in the same request.** Confirmed against the
+> real appliance (2026-08-29): a filtered call carrying `limit` makes the
+> backend abort the query and return HTTP 401, while the same call without
+> `limit` succeeds. A `WHERE` already bounds the query. An *unfiltered* call
+> still needs `limit` — with neither, the backend does an unbounded scan and
+> times out. The connector enforces this in `_bounded_query()` and applies a
+> caller's `limit` client-side on filtered calls.
 
 Note this was undetectable locally in **both** directions: the mock matched on
 `name`, so the wrong key passed, and it also falls through to returning every

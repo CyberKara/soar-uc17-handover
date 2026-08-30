@@ -381,17 +381,478 @@ GUI run should be a confirmation rather than a debugging session.
   zero-argument launch for a typed input on every manual run, and touching
   their block structure risks a GUI regression on playbooks whose only job is
   diagnosing one. Worth revisiting only if a third connector variant appears.
-- [ ] Open design item, **now unblocked**: purpose-built `WHERE` filter
-  parameters rather than a raw passthrough param. It was blocked on the user
-  naming concrete filter needs; the 2026-08-27 answer supplied them. Confirmed
-  filterable columns on `ip_block_subnet_list`: `subnet_name`, `subnet_id`,
-  `parent_subnet_name`, `parent_site_name`, `start_ip_addr`/`end_ip_addr`
-  (hex), `start_hostaddr`/`end_hostaddr` (dotted IP). "List subnets under a
-  parent" maps to `parent_subnet_name`, "by site" to `parent_site_name`, and
-  the address pairs give a real range lookup — the exact case that motivated
-  making `limit` caller-controlled, since a range filter can legitimately
-  return many rows. Not started; needs a design pass on which of these become
-  named parameters.
+- [x] ~~Open design item: purpose-built `WHERE` filter parameters~~ —
+  **DESIGNED AND BUILT 2026-08-29 for the equality columns; ranges deferred
+  behind three appliance probes.** See the section below.
+
+## Purpose-built `WHERE` filters on `list subnets` (2026-08-29)
+
+Closes the item deferred at connector 1.0.8. `list subnets` took a single
+required `name` param, so the only question it could answer was "tell me about
+this exact subnet" — the 2026-08-27 filter needs (by parent, by site, by range)
+had nowhere to go.
+
+### Shape (agreed with the user before building)
+
+Four optional named parameters, **exactly one required at runtime**:
+
+| Parameter | WHERE column | Answers |
+|---|---|---|
+| `subnet_name` | `subnet_name` | this exact subnet (replaces `name`) |
+| `subnet_id` | `subnet_id` | this subnet by id |
+| `parent_subnet_name` | `parent_subnet_name` | the subnets under a parent |
+| `site_name` | `parent_site_name` | the subnets in a space/site |
+
+Two mappings are deliberately **not** identities, so they live in a
+`LIST_SUBNETS_FILTERS` table rather than an f-string: `subnet_name` filters but
+the record returns its name under `name`, and the caller-facing `site_name`
+filters as `parent_site_name`. This is precisely the mismatch that shipped as
+`WHERE=name='...'` and passed locally for two versions.
+
+**Why exactly one, not any combination.** Whether this service's `WHERE`
+accepts `AND` at all has never been confirmed on the real APIM, and the mock
+cannot settle it — `_WHERE_RE` parses a single `col='val'` and nothing more.
+Composing two filters would be another coded guess of exactly the kind that has
+been wrong every previous time. Two filters is therefore a clean refusal, not a
+silently-dropped condition.
+
+**Why not zero either** (user decision, against allowing a bare browse): a bare
+bounded call is legal on the APIM — `test_connectivity` makes one — but as a
+*lookup* it returns arbitrary rows, so a playbook that lost its filter binding
+would enrich against a random subnet and look like it had worked. Both the
+zero- and two-filter refusals happen **before** any HTTP call.
+
+### Ranges: designed, deliberately not built
+
+`start_ip_addr`/`end_ip_addr` (hex) and `start_hostaddr`/`end_hostaddr` (dotted
+IP) are vendor-confirmed filterable, and a range lookup is the case that
+motivated making `limit` caller-controlled in the first place. It is still not
+buildable without two facts nobody has, both marked `None` ("real but not
+implemented") in the mock's own `_FILTER_COLUMNS`.
+
+**Three curl probes on the real appliance would settle it** (all read-only,
+all bounded):
+
+1. **Does `WHERE` accept `AND`?**
+   `GET /rest/ip_block_subnet_list?WHERE=parent_site_name='<site>' AND parent_subnet_name='<parent>'&limit=5`
+   — a 200 with correctly-narrowed rows means composition works; a 400 or
+   ignored second condition means the one-filter rule stays permanent.
+2. **Does it accept comparison operators?**
+   `GET /rest/ip_block_subnet_list?WHERE=start_hostaddr>='10.20.0.0'&limit=5`
+   — anything other than a 200 with narrowed rows means ranges are impossible
+   through this column regardless of what 1 says.
+3. **Which representation do the range columns want?** Run 2 again against
+   `start_ip_addr` with the hex form (`0a140000`). The connector already has
+   `_ip_to_hex()`, so whichever answers correctly is cheap to adopt — but
+   guessing between them is not.
+
+Until all three are answered, the range columns stay unexposed. Answer them and
+the work is small: extend `LIST_SUBNETS_FILTERS`, relax `_select_single_filter`
+to the confirmed composition rule, and teach the mock's `_WHERE_RE` the
+operator/AND grammar so it can still fail loudly.
+
+### Breaking change and blast radius
+
+`name` → `subnet_name` on `list subnets` only. `get ip pool` keeps its own
+`name` param, untouched. Both diagnostic playbooks updated on both sides (`.py`
+and `.json`, with `requiredParameters` now `[]` to match the manifest);
+`check_usercode_sync.py` clean across all 21 playbooks. **Nothing else binds
+this action** — `efficientip_ddi_enrich`, the actual UC deliverable, never
+called it, so the enrich flow is untouched.
+
+The mock gained a **second subnet under the same parent and site**. Without it a
+parent/site filter returns one row and proves nothing — the same trap the
+single-alias seed set for two versions. Applied to both mock copies (they are an
+unsynced mirror by design).
+
+### Verification
+
+- Classic connector suite **32 passing** (was 24): parent filter, the
+  `site_name`→`parent_site_name` non-identity mapping, subnet_name still works,
+  apostrophe escaping through a non-default filter, and both refusals asserting
+  `requests.request` was never called.
+- Mock suite **26 passing** (was 22): parent filter returns both children, site
+  filter returns both, raw `site_name` as a WHERE column is still a loud 400,
+  plus a guard on the seed itself so collapsing it back to one record fails.
+- `check_usercode_sync.py` clean; both connectors and both mocks parse.
+- **Both packages built** (2026-08-29): `efficientip_ddi.tgz` at **1.0.10**,
+  py 3.13, 70 wheels with **7/7 platform-provided bundled**;
+  `dist/efficientip_ddi_classic-v1.0.7.tgz`. The SDK manifest was regenerated
+  from the decorators and inspected — all four filters present, optional, in
+  order, with `limit` numeric/default 1, matching the classic manifest exactly.
+- **Deployed and live-verified 2026-08-29.** Apps **205 @ 1.0.10** and
+  **206 @ 1.0.7** installed in place (5 actions registered each, confirmed via
+  `/rest/app_action` — `/rest/app/<id>` reports `actions: 0` for every app and
+  is not a registration check). Playbooks redeployed: **722** (enrich, v19),
+  **723** (SDK action test, v12), **724** (classic action test, v11), all
+  `validation=True`. `mock-efficientip-ddi.service` restarted (approved) and now
+  serves both subnets.
+- **`uc17_verify.sh` green against the new code** — enrich 722 reports
+  `alias_count: 2`, both action-test playbooks PASS on all four actions.
+
+### Every new filter exercised through SOAR's real action dispatch
+
+`uc17_verify.sh` only covers `subnet_name`, so the rest were driven directly via
+`POST /rest/action_run` against **both** apps. All ten results correct:
+
+| Filter | SDK (205) | Classic (206) |
+|---|---|---|
+| `parent_subnet_name='10.20.0.0/16'` | 2 rows | 2 rows |
+| `site_name='Corporate'` → `parent_site_name` | 2 rows | 2 rows |
+| `subnet_name='10.20.30.0/24'` | 1 row | 1 row |
+| no filter | failed, correct message | failed, correct message |
+| two filters | failed, names both | failed, names both |
+
+The two 2-row results are the ones that matter: they prove the parent filter
+genuinely narrows *and* returns every child rather than truncating, and that the
+non-identity `site_name`→`parent_site_name` mapping resolves correctly against a
+real backend response — neither of which the single-subnet seed could show.
+
+## Second real-appliance 401 — on `list subnets` only (2026-08-29, open)
+
+User testing **classic v1.0.6** against the real appliance: `test connectivity`
+passes, `list subnets` returns **HTTP 401**.
+
+### This cannot be a credential problem, and the code proves it
+
+Both actions go through the same `_make_rest_call()`, to the **same URL**
+(`/rest/ip_block_subnet_list`), with **byte-identical** auth material — same
+`_auth_headers(config)`, same mTLS cert/key/CA, same `verify`. Diff the two
+calls and only the query string differs:
+
+| Action | Query |
+|---|---|
+| `test connectivity` | `?limit=1` |
+| `list subnets` | `?WHERE=subnet_name='10.20.30.0/24'&limit=N` |
+
+So whatever returns 401 is reacting to **the `WHERE` parameter**, not to any
+credential. Same reasoning that made the first 401 informative: ask which code
+path did *not* differ.
+
+### Leading theory: the gateway, not SOLIDserver
+
+`WHERE=subnet_name='...'` is a single-quoted SQL-ish clause — a textbook
+injection signature for an API gateway WAF. The value also contains `/`, which
+`requests` percent-encodes to `%2F`, and rejecting encoded slashes in a query
+string is common default gateway behaviour. Gateways commonly answer both cases
+with 401 rather than 400/403, which is exactly what makes this read like an auth
+failure when it is not.
+
+If this holds, it is a **gateway policy** issue, not a connector bug and not a
+SOLIDserver one — and no connector change fixes it. It would also cast doubt on
+the whole `WHERE` filtering approach against this APIM.
+
+### Appliance datapoint: unfiltered `list subnets` works (2026-08-29, later)
+
+User edited classic **v1.0.6** in place on the appliance, removed the `WHERE`
+clause from `_handle_list_subnets` so the call carries only `limit` — **returns
+results.**
+
+**What it confirms:** the unfiltered mode added in 1.0.11 (filters optional,
+`limit` alone is a legal call) is correct against the real appliance. Good, but
+this was already implied by `test_connectivity`, which has always made exactly
+that call.
+
+**Hypothesis (a) is CONFIRMED — `WHERE` alone works.** The user had already
+reported it, in the same message that described the timing: *"if I ask for
+target subnet_name and specify limit=1 it will terminate process and then send
+back response, but if I don't use limit=1 it holds off until I get back the
+response."* That second clause is the result — a filtered `subnet_name` lookup
+with no `limit` returns the response.
+
+So the rule is settled and **1.0.14 is correct**: on a filtered call, send
+`WHERE` and drop `limit`; on an unfiltered call, send `limit`. Filtering is
+preserved, and the client-side-filtering fallback is not needed.
+
+> **Process failure, recorded because it repeated.** That confirmation was
+> requested from the user a second time after it had already been supplied — the
+> same thing that happened with the `Content-Type` probe, where both arms of the
+> experiment already existed. Twice in one session, evidence already in hand was
+> written up as an open question with a test attached. **Before proposing any
+> probe, re-read what the user has already reported.** The cost is not just
+> wasted effort; being asked to re-prove something you already said reads as not
+> being believed.
+
+
+## DECISIVE: it is the SERVICE, not the encoding or the auth (2026-08-29)
+
+User, from the real appliance:
+
+```
+GET /rest/ip_address_list?WHERE=ip_addr%3D%27<hex>%27      -> 200, returns data
+```
+
+**That single result kills the encoding theory.** `%3D` — the percent-encoded
+`=` operator that `requests` produces — is accepted on `ip_address_list`. A fix
+to send the operator literally was written and **reverted before shipping**: it
+would have changed a wire format that demonstrably works, risking a regression
+in `get ip address`, the one WHERE-using action known to be fine.
+
+### The evidence table, which now points somewhere narrow
+
+| Service | `WHERE` | Result |
+|---|---|---|
+| `ip_block_subnet_list` | none (`limit` only) | **200** |
+| `ip_block_subnet_list` | `subnet_name='...'` | **401** |
+| `ip_address_list` | `ip_addr='<hex>'` (same encoding) | **200** |
+
+Ruled out, each by evidence rather than argument: **credentials** (both services
+reachable), **percent-encoding** (`%3D` works on one service), **Content-Type**
+(set on every call including the passing ones), **base64 of the DDI headers**
+(present in source since 1.0.3).
+
+What is left is specific to **`ip_block_subnet_list` + a `WHERE` clause**.
+
+**Leading theory: per-operation parameter policy at the APIM.** Gateways
+commonly validate requests against a published spec and reject undeclared query
+parameters — and commonly answer a policy denial with 401 rather than 400/403.
+If this org's APIM publishes `ip_block_subnet_list` without a `WHERE` parameter
+while publishing `ip_address_list` with one, this is exactly what you would see.
+
+### The one probe that settles it
+
+A third service breaks the tie:
+
+```
+GET /rest/ip_pool_list?WHERE=pool_name%3D%27<a real pool>%27&limit=1
+```
+
+- **200** → only `ip_block_subnet_list` rejects `WHERE`. Per-service gateway
+  policy, near-certain. Nothing in the connector can fix it; it is an APIM
+  configuration question.
+- **401** → `ip_address_list` is the *exception*, not subnet the outlier, and
+  the question becomes which services the gateway publishes `WHERE` for at all.
+
+Also worth one attempt: `ip_block_subnet_list` with a *different* column
+(`WHERE=subnet_id%3D%271%27`). If every column 401s, the parameter itself is
+what is refused, not its content.
+
+### If `WHERE` is genuinely unavailable on this service
+
+Then `list subnets` cannot filter server-side on this appliance at all, and the
+options are: fetch bare with a generous `limit` and **filter client-side in the
+connector**, or drop subnet filtering as a capability here. The user's request
+earlier the same day — *"only `limit` is required to be set"* — already shipped
+in 1.0.11 and turns out to be the only mode that works against this gateway.
+
+### New evidence: the appliance's own error text (2026-08-29, later)
+
+The appliance's 401 body carries
+`"message": "The specified document is not valid JSON data"`.
+
+**Two things this settles** (and see the exoneration note below — the
+Content-Type theory this evidence raised was closed without a probe).
+
+1. **`X-DDI-Username`/`X-DDI-Password` ARE base64-encoded in 1.0.6.** That was
+   the first hypothesis and it is wrong — the 1.0.3 fix is present in the
+   source. Now pinned permanently by `test_ddi_headers_are_base64_encoded`,
+   which decodes the header back rather than just asserting it is non-empty.
+2. **The message is not ours.** It appears nowhere in this repo. Traced through
+   `_process_response()`: on a non-OK response with a JSON content-type it
+   parses the body and surfaces `data.get("message")` — so this is the
+   appliance's own JSON error body, and the appliance is saying it tried to
+   parse a *document* and failed.
+
+**The only JSON document this connector ever claimed to send** was the one
+announced by `headers["Content-Type"] = "application/json"`, set
+unconditionally in `_make_rest_call()` on every action — all of which are
+**bodiless GETs**. A strict server honouring that header reads an empty body as
+a JSON document and rejects it, which is exactly this error.
+
+Fixed in **1.0.12 / classic 1.0.9**: `Content-Type` replaced with `Accept:
+application/json`, which is what was meant. `Content-Type` describes a body;
+there is none.
+
+> **CONTENT-TYPE EXONERATED — no probe needed, the experiment was already run.**
+> `_make_rest_call()` sets this header on *every* request, `test connectivity`
+> included. So the two calls that settle it already exist: the user's bare
+> `?limit=1` curl **without** the header returns 200, and `test connectivity` —
+> the identical call **with** it — passes. Same request, header the only
+> difference, both succeed. The header is not the cause of anything.
+>
+> The 1.0.12 fix stands on its own merits (a `Content-Type` describing a body
+> that does not exist is simply wrong), but it is **not** a 401 fix and must not
+> be recorded as one.
+>
+> Process note worth keeping: this was deducible from evidence already in hand,
+> and was instead written up as an open suspect with a probe attached. The hole
+> in the theory ("test connectivity sends the same header and passes") was even
+> stated explicitly — and then not followed to its conclusion. **A stated
+> anomaly is a lead, not a caveat to park.**
+
+### What actually goes on the wire (confirmed, not assumed)
+
+Everything after `WHERE=` is **one opaque parameter value**, so `requests`
+percent-encodes all of it — including the inner `=`. Verified two ways: by
+preparing the request through `requests` directly, and against the mock's own
+access log, which recorded exactly this URL.
+
+```
+python  : WHERE = subnet_name='10.20.30.0/24'
+wire    : WHERE=subnet_name%3D%2710.20.30.0%2F24%27&limit=1
+```
+
+| Char | Encoded | Where it appears |
+|---|---|---|
+| `=` | `%3D` | the operator between field and value |
+| `'` | `%27` | both quotes |
+| `/` | `%2F` | inside any CIDR-style subnet name |
+
+`subnet_name` itself stays literal. **Three** characters get encoded, not just
+the slash — so `%3D` is as much a suspect as `%2F`.
+
+### Discriminating probes (read-only, same certs as the working call)
+
+**Each probe must be run BOTH ways.** A raw curl URL is sent unencoded and is a
+genuinely different HTTP request from what the connector sends, so a raw curl
+that passes proves nothing on its own. This is the primary discriminator:
+
+- **Form A (encoded, byte-identical to the connector):**
+  `curl -G ... --data-urlencode "WHERE=subnet_name='10.20.30.0/24'" --data-urlencode "limit=1"`
+  — `--data-urlencode "name=content"` encodes only the part after the first
+  `=`, exactly as `requests` does.
+- **Form B (raw):** the same clause literal in the URL.
+
+| # | `WHERE` value | Isolates |
+|---|---|---|
+| 1 | *(none, just `limit=1`)* | baseline — known to pass |
+| 2 | `subnet_id=2001` | a `WHERE` at all — no quotes, no slash |
+| 3 | `subnet_id='2001'` | adds the **quote** (`%27`) |
+| 4 | `parent_site_name='Corporate'` | quotes + letters, still no slash |
+| 5 | `subnet_name='10.20.30.0/24'` | the failing case — adds **`/` → `%2F`** |
+
+Reading the result:
+
+- **A fails, B passes** → the **encoding** is the trigger (`%2F`, possibly
+  `%3D`). Gateway rule; no connector change fixes it.
+- **Both fail** → the clause itself is rejected regardless of form; walk 2→5 to
+  find which character.
+- **Both pass** → it is not the `WHERE` clause, and the appliance's exact
+  failing request is needed.
+
+### Mitigation already shipped
+
+Connector **1.0.11 / classic 1.0.8** makes every `list subnets` filter optional
+(user decision, see release notes), so an unfiltered `?limit=N` call — the shape
+already proven to work on this appliance — is now a first-class way to use the
+action. That is a genuine workaround if the `WHERE` path stays blocked, though
+it does not restore filtering.
+
+> **The appliance is running classic 1.0.6**, which predates all of today's
+> work. Whatever the probes show, the version under test is three releases
+> behind on this action.
+
+## 401 RESOLVED (2026-08-29) — it was the asset config
+
+User updated the asset configuration on the real appliance and **Test
+Connectivity now passes**. Reported cause: previously-hidden (password-type)
+fields did not carry across as usable values — what arrived was not a real
+value, and the asset had to be filled in properly on the target side.
+
+**This lands squarely on candidate 1's axis: the asset config that crossed the
+air gap, not the code.** It does not finger the exact mechanism between "lab
+identity leaked into `client_id`/`ddi_username`" and "placeholdered secret never
+correctly re-entered" — both are the same failure surface, and the export fix
+addresses both by forcing every non-portable field to be re-entered
+deliberately. Candidate 2 (`_auth_headers()` not stripping) is **not
+implicated** and remains a fixed latent risk rather than a proven cause.
+
+**What this now confirms, outside the mock, for the first time:** the full auth
+stack works end to end on the real appliance — mTLS handshake, the Basic APIM
+app credential, and the forwarded `X-DDI-*` backend auth all accepted, on top of
+the packaging/network/bounded-call layers the 401 had already proven. Every
+layer of the connector's request path is now exercised against real hardware.
+
+> **The appliance still runs 1.0.8.** It has neither the `.strip()` fix nor the
+> new `list subnets` filter surface — both landed in 1.0.10, which has never
+> been carried across. A re-export is what delivers them.
+
+## First real airgapped-appliance run (2026-08-28) — HTTP 401
+
+The handover package (bundled connector v1.0.8) was exported, carried across
+the air gap and installed by the user. `Test Connectivity` on the asset
+returned **HTTP 401**.
+
+**A 401 is the good failure.** Read against `_request()`'s exception ladder,
+everything beneath the auth layer passed — and all of it is confirmed outside
+the mock for the first time:
+
+| Layer | Evidence |
+|---|---|
+| Packaging | No `ModuleNotFoundError`. `requests` is imported at module level, so reaching an HTTP status proves the import resolved. |
+| mTLS | No `SSLError` → *"TLS/mTLS error connecting to APIM"*. `_normalize_pem()` handled hand-typed PEMs; the appliance trusted the client cert. |
+| Network | No `ConnectionError` → *"Could not reach APIM"*. |
+| Bounded call | `test_connectivity`'s bare `ip_block_subnet_list` at `limit=1` reached the APIM rather than hanging. |
+
+**On the wheels question:** bundling is now confirmed *sufficient* on the
+appliance. It does **not** show the appliance provides the 7 platform packages
+— we shipped them. Stock stays untested there; always bundle.
+
+**The 401 — two candidates, neither confirmed.** Needs the full error body,
+which the connector appends (`EfficientIP/APIM returned HTTP 401: <detail>`)
+and which may name the rejected layer.
+
+1. **The export ships lab-specific identities.** `export_template_assets()`
+   redacts what is *secret*, never what is *ours* — so `client_secret`,
+   `ddi_password` and all three PEMs arrived as `<<SET ME>>` while `client_id`
+   and `ddi_username` arrived carrying the lab mock's values. Real secrets +
+   lab usernames = this exact 401.
+2. **`_auth_headers()` does not strip its inputs** — the four credential fields
+   are base64-encoded raw, so one pasted trailing newline silently produces a
+   wrong credential.
+
+Full analysis in memory `[[project-soar-efficientip-airgapped-first-run]]`.
+
+### Both fixes implemented (2026-08-29)
+
+Neither confirms the 401 — that still needs the full APIM error body — but both
+were real defects on their own terms, and both are now closed.
+
+**Fix 1 — the export redacts on one axis, now on two.**
+`export_handover.py`'s `export_template_assets()` asked only *"is this
+secret?"* (password-typed field, `-----BEGIN` blob, lab address, mock
+`base_url`). It now also asks *"is this ours?"*: a new `IDENTITY_FIELD_RE`
+placeholders identity-shaped field **names** — `username`, `user`, `login`,
+`client_id`, `app_id`, `account`, `principal`, `sender`, `email` and their
+prefixed forms — with a message that says it was the lab's identity rather than
+a secret. Matching is on the name, not the value, because an identity value
+looks like nothing in particular. `IDENTITY_FIELD_EXCEPTIONS` keeps
+non-identities the pattern would otherwise catch (`user_agent`,
+`email_subject`) out of it, so no operator goes hunting for a value unrelated to
+their credentials. Checked against UC17's real asset field set: `client_id` and
+`ddi_username` are now placeheld; `base_url`, `verify_ssl` and the PEM/password
+fields are unaffected (the latter were already caught upstream).
+
+The generated `HANDOVER.md` install step (**both** the EN and FR texts) now
+splits its redaction explanation into the two axes and states the failure mode
+explicitly — a real password beside a leftover source-environment username
+authenticates as nothing and returns HTTP 401 — since the previous wording sent
+the operator to a vault/CMDB for values no vault holds.
+
+**Fix 2 — credentials are stripped at the point of use.** `_auth_headers()`
+base64-encoded all four credential fields exactly as stored, while the three PEM
+fields were whitespace-normalised by `_normalize_pem()`. On an airgapped box
+every one of these is hand-entered, and base64 preserves whatever surrounds the
+value, so one trailing newline produced a wrong-by-one-byte credential and an
+indistinguishable 401. Both connectors now `.strip()` all four. **SDK 1.0.9 →
+1.0.10, classic 1.0.6 → 1.0.7** (live is 205 @ 1.0.8 and 206 @ 1.0.6, so both
+numbers clear the install gate).
+
+Two regression tests added to `efficientip_ddi_classic/tests/`: whitespace
+around any of the four must not change the encoded headers, and stripping must
+not flatten a genuinely different value into a matching one. The first was
+confirmed to fail against the pre-fix connector. Suite is 26 passing (was 24);
+the 22 mock-server tests still pass.
+
+**Not built, not installed, not re-exported.** The version bumps are source-only
+so far — soar8 still runs 1.0.8/1.0.6, and the handover package the user holds
+still carries the lab identities. A fresh export is what actually delivers Fix 1
+to the appliance.
+
+> **Connector v1.0.9 is built but NOT installed on soar8.** It is a version bump
+> only (no code change), made to clear the install gate so the bundled build
+> could replace the stock one on app 205. `install_app.sh` was denied by a
+> permission classifier and not worked around, so soar8 still runs stock 1.0.8.
 
 ### Verification performed this session (soar8 + mock only)
 

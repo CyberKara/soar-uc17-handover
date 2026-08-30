@@ -5,9 +5,9 @@ SDK-based efficientip_ddi app, built for side-by-side airgapped comparison.
 Same auth model, same endpoints, same corrected field names as the SDK
 version (soar-connectors/connectors/efficientip_ddi/src/app.py) -- see that
 app's README for the full research/field-name provenance. This file exists
-purely so the user can install both connector styles against the real
-airgapped SOLIDserver instance and compare behavior; it is not meant to
-replace the SDK connector as the maintained implementation.
+purely so both connector styles can be installed against the real airgapped
+SOLIDserver instance and compared; it is not meant to replace the SDK
+connector as the maintained implementation.
 
 Auth (3 layers, every request):
   1. mTLS -- client_cert/client_key (+ optional client_ca) presented to APIM
@@ -39,6 +39,7 @@ from efficientip_ddi_classic_consts import (
     IP_ALIAS_LIST_PATH,
     IP_BLOCK_SUBNET_LIST_PATH,
     IP_POOL_LIST_PATH,
+    LIST_SUBNETS_FILTERS,
 )
 
 
@@ -99,9 +100,8 @@ class EfficientipDdiClassicConnector(BaseConnector):
         # No dedicated health-check service exists in SOLIDserver's real API.
         # ip_block_subnet_list is the one endpoint confirmed to exist on the
         # real APIM that needs no filter/params at all. limit=1 is required,
-        # not optional: confirmed live against the real APIM (2026-08-26)
-        # that a bare list call with no WHERE *and* no limit times out
-        # server-side; adding limit alone (no WHERE) is what actually works.
+        # not optional: a bare list call with no WHERE *and* no limit times
+        # out server-side on the real APIM; limit alone (no WHERE) works.
         ret_val, _ = self._make_rest_call("GET", IP_BLOCK_SUBNET_LIST_PATH, {"limit": 1}, action_result)
 
         if phantom.is_fail(ret_val):
@@ -124,7 +124,7 @@ class EfficientipDdiClassicConnector(BaseConnector):
             return action_result.get_status()
 
         ret_val, records = self._make_rest_call(
-            "GET", IP_ADDRESS_LIST_PATH, {"WHERE": "ip_addr='{}'".format(hex_addr), "limit": limit}, action_result
+            "GET", IP_ADDRESS_LIST_PATH, self._bounded_query(limit, "ip_addr='{}'".format(hex_addr)), action_result
         )
         if phantom.is_fail(ret_val):
             return action_result.get_status()
@@ -132,6 +132,7 @@ class EfficientipDdiClassicConnector(BaseConnector):
         records = self._ensure_list(records, action_result)
         if records is None:
             return action_result.get_status()
+        records = self._apply_client_limit(records, limit, "ip_addr")
         if not records:
             return action_result.set_status(
                 phantom.APP_ERROR, "No IP address record found in SOLIDserver for {}".format(address)
@@ -166,19 +167,23 @@ class EfficientipDdiClassicConnector(BaseConnector):
         action_result = self.add_action_result(ActionResult(dict(param)))
         self.save_progress("DEBUG GUI: Starting list subnets action")
 
-        name = param["name"]
         limit = self._limit_from(param, action_result)
         if limit is None:
             return action_result.get_status()
 
+        # Resolved before the call, so an ambiguous filter fails without ever
+        # touching the APIM. LIST_SUBNETS_FILTERS carries the param -> WHERE
+        # column mapping, including the two that deliberately differ. No filter
+        # is legal: it lists subnets bare, bounded by limit.
+        ok, column, value = self._select_optional_filter(param, LIST_SUBNETS_FILTERS, action_result)
+        if not ok:
+            return action_result.get_status()
+
+        where = "{}='{}'".format(column, self._sql_escape(value)) if column else None
+        query = self._bounded_query(limit, where)
+
         ret_val, records = self._make_rest_call(
-            # The WHERE column and the SELECT column genuinely differ here:
-            # the record returns its name under "name", but the filterable
-            # column is "subnet_name". Vendor-confirmed against the real
-            # APIM -- filtering on "name" does not work. Other filterable
-            # columns: subnet_id, parent_subnet_name, parent_site_name,
-            # start_ip_addr/end_ip_addr (hex), start_hostaddr/end_hostaddr.
-            "GET", IP_BLOCK_SUBNET_LIST_PATH, {"WHERE": "subnet_name='{}'".format(self._sql_escape(name)), "limit": limit}, action_result
+            "GET", IP_BLOCK_SUBNET_LIST_PATH, query, action_result
         )
         if phantom.is_fail(ret_val):
             return action_result.get_status()
@@ -186,8 +191,12 @@ class EfficientipDdiClassicConnector(BaseConnector):
         records = self._ensure_list(records, action_result)
         if records is None:
             return action_result.get_status()
+        records = self._apply_client_limit(records, limit, where)
         if not records:
-            return action_result.set_status(phantom.APP_ERROR, "No subnet found in SOLIDserver for {}".format(name))
+            where = " for {}='{}'".format(column, value) if column else ""
+            return action_result.set_status(
+                phantom.APP_ERROR, "No subnet found in SOLIDserver{}".format(where)
+            )
 
         # Raw pass-through, one data item per record -- see
         # _handle_get_ip_address for both rationales.
@@ -214,7 +223,7 @@ class EfficientipDdiClassicConnector(BaseConnector):
             return action_result.get_status()
 
         ret_val, records = self._make_rest_call(
-            "GET", IP_POOL_LIST_PATH, {"WHERE": "pool_name='{}'".format(self._sql_escape(name)), "limit": limit}, action_result
+            "GET", IP_POOL_LIST_PATH, self._bounded_query(limit, "pool_name='{}'".format(self._sql_escape(name))), action_result
         )
         if phantom.is_fail(ret_val):
             return action_result.get_status()
@@ -222,6 +231,7 @@ class EfficientipDdiClassicConnector(BaseConnector):
         records = self._ensure_list(records, action_result)
         if records is None:
             return action_result.get_status()
+        records = self._apply_client_limit(records, limit, "pool_name")
         if not records:
             return action_result.set_status(phantom.APP_ERROR, "No IP pool found in SOLIDserver for {}".format(name))
 
@@ -294,7 +304,14 @@ class EfficientipDdiClassicConnector(BaseConnector):
         config = self.get_config()
         url = "{}{}".format(self._base_url, path)
         headers = self._auth_headers(config)
-        headers["Content-Type"] = "application/json"
+        # No Content-Type header. It describes a request BODY, and every action
+        # here is a bodiless GET -- declaring "application/json" on a request
+        # with no body invites a strict server to parse the empty body as a
+        # JSON document and reject it. The real appliance was seen returning
+        # HTTP 401 with `"message": "The specified document is not valid JSON
+        # data"`. Add Content-Type back per-request if a body is ever
+        # actually sent.
+        headers["Accept"] = "application/json"
 
         cert_path = key_path = ca_path = None
         try:
@@ -350,9 +367,9 @@ class EfficientipDdiClassicConnector(BaseConnector):
                     None,
                 )
         elif not response.content:
-            # Confirmed live (2026-08-26): the real APIM returns HTTP 204 No
-            # Content (empty body, no Content-Type) for a "not found"/empty
-            # result on a list endpoint -- not a 200 with an empty JSON
+            # The real APIM returns HTTP 204 No Content (empty body, no
+            # Content-Type) for a "not found"/empty result on a list
+            # endpoint -- not a 200 with an empty JSON
             # array. Every action here expects a list from _ensure_list(),
             # so default to [] here, not {} -- a dict would fail that
             # isinstance check and surface a confusing "unexpected response
@@ -401,13 +418,23 @@ class EfficientipDdiClassicConnector(BaseConnector):
     # ---- Auth / Encoding Helpers ----
 
     def _auth_headers(self, config):
+        # Every one of these four is hand-entered into a SOAR text field, and all
+        # four get base64-encoded, so surrounding whitespace survives into the
+        # credential instead of being rejected at entry. A single pasted trailing
+        # newline yields a wrong credential and an HTTP 401 indistinguishable from
+        # a genuinely wrong value.
+        client_id = config["client_id"].strip()
+        client_secret = config["client_secret"].strip()
+        ddi_username = config["ddi_username"].strip()
+        ddi_password = config["ddi_password"].strip()
+
         basic = base64.b64encode(
-            "{}:{}".format(config["client_id"], config["client_secret"]).encode()
+            "{}:{}".format(client_id, client_secret).encode()
         ).decode()
         return {
             "Authorization": "Basic {}".format(basic),
-            "X-DDI-Username": base64.b64encode(config["ddi_username"].encode()).decode(),
-            "X-DDI-Password": base64.b64encode(config["ddi_password"].encode()).decode(),
+            "X-DDI-Username": base64.b64encode(ddi_username.encode()).decode(),
+            "X-DDI-Password": base64.b64encode(ddi_password.encode()).decode(),
         }
 
     def _ip_to_hex(self, address, action_result):
@@ -475,6 +502,71 @@ class EfficientipDdiClassicConnector(BaseConnector):
     def _sql_escape(self, value):
         """Escape a value for SOLIDserver's SQL-ANSI-style WHERE clause."""
         return value.replace("'", "''")
+
+    def _bounded_query(self, limit, where=None):
+        """Build the query params. NEVER send `WHERE` and `limit` together.
+
+        The backend's behaviour across the four combinations:
+
+            WHERE   limit   result
+            no      no      times out -- unbounded full scan (v1.0.2)
+            no      yes     works     -- what test_connectivity does
+            yes     no      works     -- slower, the filter is doing real work
+            yes     yes     FAILS     -- backend aborts, returns HTTP 401
+
+        A WHERE already bounds the query, so limit alongside one is redundant
+        and actively harmful.
+
+        A caller's limit is still honoured on a filtered call, applied
+        client-side after the response -- see _apply_client_limit.
+        """
+        return {"WHERE": where} if where else {"limit": limit}
+
+    def _apply_client_limit(self, records, limit, where):
+        """Honour `limit` on a filtered call, where it cannot go on the wire.
+
+        Only truncates when a WHERE was sent; an unfiltered call was already
+        bounded server-side.
+        """
+        return records[:limit] if where else records
+
+    def _select_optional_filter(self, param, filter_map, action_result):
+        """Pick at most one supplied filter, returning (where_column, value).
+
+        Returns (None, None) when nothing is set, which is a legal call, not an
+        error: ip_block_subnet_list needs no filter params at all -- that bare
+        bounded shape is what test connectivity has always used and the one
+        confirmed to work on the real APIM. It is also what to fall back to
+        when a WHERE clause is rejected by the gateway rather than the backend.
+
+        At most one, never two: the WHERE clause has only ever been confirmed
+        carrying a single column='value' condition, so composing two would be a
+        coded guess of the same kind that shipped as WHERE=name='...'.
+
+        Returns (ok, column, value). ok is False only on the two-filter error,
+        with action_result already failed -- "no filter" is a success with
+        column None, so the caller never has to infer intent from status.
+        """
+        supplied = []
+        for name in filter_map:
+            value = param.get(name) or ""
+            if value.strip():
+                supplied.append((name, value.strip()))
+
+        if not supplied:
+            return True, None, None
+        if len(supplied) > 1:
+            action_result.set_status(
+                phantom.APP_ERROR,
+                "Set exactly ONE filter, got {}. This service is only confirmed to accept "
+                "a single WHERE condition; combining filters is not supported.".format(
+                    ", ".join(name for name, _ in supplied)
+                ),
+            )
+            return False, None, None
+
+        param_name, value = supplied[0]
+        return True, filter_map[param_name], value
 
     # ---- Cert Handling (same PEM-normalize-to-tempfile pattern as cyberark_ccp) ----
 

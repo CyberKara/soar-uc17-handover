@@ -50,8 +50,8 @@ sends `limit=1` — see the `limit` policy below). Output field names
 `ip_class_parameters`, `ip_id`, `name`) are the vendor's real field names
 for `ip_address_list` — confirmed against SOLIDserver's own public REST
 method reference (`solidserverrest` project docs, v9.0.1a), not just
-inferred by SDK analogy. That pass (2026-08-25) also caught 3 real bugs
-that had been silently masked because the mock used the same wrong names:
+inferred by SDK analogy. That cross-check caught 3 real bugs that had been
+silently masked because the mock used the same wrong names:
 `get ip address`'s hostname field is `name`, not `hostdev_name` (not a real
 field at all); `get ip pool`'s address-range fields are `start_hostaddr`/
 `end_hostaddr`, not `pool_start_hostaddr`/`pool_end_hostaddr`; `list
@@ -71,7 +71,7 @@ lower-confidence actions carry a `raw_json` fallback field; check it if a
 named field comes back empty.
 
 **`limit` policy: every list call is bounded, and the bound is an action
-parameter (`limit`, default 1).** Confirmed live against the real APIM: an
+parameter (`limit`, default 1).** On the real APIM an
 unbounded call (no `WHERE`, no `limit`) times out server-side — the backend
 does a full scan/dump. Adding `limit` alone (no `WHERE`) works fine, and a
 `WHERE`-filtered single-record lookup also works. Relying on `WHERE` alone
@@ -184,7 +184,12 @@ app = App(
     product_vendor="EfficientIP",
     product_name="SOLIDserver",
     publisher="Ted",
-    appid="71a7abcc-75fa-4a8d-ae9d-23fb352869e4",
+    # SOAR correlates an installed app by this GUID and carries GUI state across
+    # versions of the same one, so changing it makes a target instance treat the
+    # app as new rather than as an upgrade of what it remembers. Playbooks bind
+    # to this value through their action nodes' connectorId -- change it and
+    # every playbook referencing the app must be rebound to match.
+    appid="b847c7d1-ee21-4af8-a92c-a91f5eb4b00d",
     python_version=PythonVersion.PY_3_13,
     min_phantom_version="7.0.0",
     fips_compliant=False,
@@ -304,6 +309,107 @@ def _sql_escape(value: str) -> str:
     return value.replace("'", "''")
 
 
+def _bounded_query(limit: int, where: str | None = None) -> dict:
+    """Build the query params. NEVER send `WHERE` and `limit` together.
+
+    The backend's behaviour across the four combinations:
+
+        WHERE   limit   result
+        no      no      times out -- unbounded full scan
+        no      yes     works     -- what test_connectivity does
+        yes     no      works     -- slower, the filter is doing real work
+        yes     yes     FAILS     -- backend aborts the query, returns HTTP 401
+
+    A `WHERE` already bounds the query, so `limit` alongside one is redundant
+    and actively harmful.
+
+    The caller's `limit` is still honoured on a filtered call, just applied
+    client-side by the caller truncating the result -- see _apply_client_limit.
+
+    Two different reasons the drop is safe, worth keeping straight:
+
+      - Exact-match filters on a unique value (ip_addr, subnet_name, subnet_id,
+        pool_name) can only match one record, so `limit` was never doing
+        anything and nothing is lost.
+      - parent_subnet_name and parent_site_name deliberately match MANY records,
+        so `limit` is NOT redundant there -- it is genuinely the caller's
+        intent, which is why _apply_client_limit exists rather than the bound
+        simply being discarded.
+
+    ACCEPTED LIMITATION: on a broad filter (e.g. a site-wide parent_site_name)
+    the appliance returns every match and we bound it only after transfer. This
+    is exactly the risk v1.0.2 was reaching for when it added the limit, and
+    there is no server-side remedy -- the one parameter that would bound it is
+    the one the backend refuses alongside a WHERE. Fine for the exact-match
+    lookups this connector is built around; watch it if a site-wide filter is
+    ever pointed at a large IPAM.
+    """
+    return {"WHERE": where} if where else {"limit": limit}
+
+
+def _apply_client_limit(records: list, limit: int, where: str | None) -> list:
+    """Honour `limit` on a filtered call, where it cannot go on the wire.
+
+    Only truncates when a WHERE was sent; an unfiltered call was already
+    bounded server-side.
+    """
+    return records[:limit] if where else records
+
+
+# Caller-facing filter parameter -> the WHERE column it actually filters on,
+# for ip_block_subnet_list. Two entries are NOT identity mappings, which is the
+# whole reason this is a table rather than an f-string: "subnet_name" filters
+# but the record comes back under "name", and the caller-facing "site_name"
+# (what the record returns) filters as "parent_site_name". Getting this wrong
+# is invisible against a permissive backend.
+#
+# Also filterable but deliberately NOT exposed: start_ip_addr / end_ip_addr
+# (hex) and start_hostaddr / end_hostaddr (dotted IP). Those are range columns,
+# and a useful range filter needs comparison operators and/or AND-composition,
+# neither of which is supported as far as anyone has established. See the probe
+# list in the UC17 plan before building them.
+LIST_SUBNETS_FILTERS = {
+    "subnet_name": "subnet_name",
+    "subnet_id": "subnet_id",
+    "parent_subnet_name": "parent_subnet_name",
+    "site_name": "parent_site_name",
+}
+
+
+def _select_optional_filter(params: Params, filter_map: dict[str, str]) -> tuple[str, str]:
+    """Pick at most one supplied filter, returning (where_column, value).
+
+    Returns (None, None) when no filter is set: `limit` alone is a legal and
+    intentional call. `ip_block_subnet_list` needs no filter params at all --
+    test_connectivity has always relied on exactly that, and it is the one
+    shape confirmed to work on the real APIM. It is also the shape to reach for
+    when a `WHERE` clause is being rejected by the gateway rather than the
+    backend (see the UC17 plan's WHERE-rejection section).
+
+    At most one, never two: this service's WHERE clause has only ever been
+    confirmed carrying a single column='value' condition. Whether it accepts
+    AND at all is unverified against the real APIM, so composing two filters
+    would be a coded guess of precisely the kind that shipped as
+    WHERE=name='...' and passed locally for two versions.
+    """
+    supplied = []
+    for name in filter_map:
+        value = getattr(params, name, "") or ""
+        if value.strip():
+            supplied.append((name, value.strip()))
+    if not supplied:
+        return None, None
+    if len(supplied) > 1:
+        raise ActionFailure(
+            "Set exactly ONE filter, got {}. This service is only confirmed to accept a "
+            "single WHERE condition; combining filters is not supported.".format(
+                ", ".join(name for name, _ in supplied)
+            )
+        )
+    param_name, value = supplied[0]
+    return filter_map[param_name], value
+
+
 def _ensure_list(data, context: str) -> list:
     """_request() is assumed to return a bare JSON array for list services — not yet
     confirmed against the real APIM, which might wrap results in an envelope instead.
@@ -317,11 +423,20 @@ def _ensure_list(data, context: str) -> list:
 
 
 def _auth_headers(asset: Asset) -> dict[str, str]:
-    basic = base64.b64encode(f"{asset.client_id}:{asset.client_secret}".encode()).decode()
+    # Every one of these four is hand-entered into a SOAR asset field, and all four
+    # get base64-encoded, so surrounding whitespace survives into the credential
+    # instead of being rejected at entry. A single pasted trailing newline yields a
+    # wrong credential and an HTTP 401 indistinguishable from a genuinely wrong value.
+    client_id = asset.client_id.strip()
+    client_secret = asset.client_secret.strip()
+    ddi_username = asset.ddi_username.strip()
+    ddi_password = asset.ddi_password.strip()
+
+    basic = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
     return {
         "Authorization": f"Basic {basic}",
-        "X-DDI-Username": base64.b64encode(asset.ddi_username.encode()).decode(),
-        "X-DDI-Password": base64.b64encode(asset.ddi_password.encode()).decode(),
+        "X-DDI-Username": base64.b64encode(ddi_username.encode()).decode(),
+        "X-DDI-Password": base64.b64encode(ddi_password.encode()).decode(),
     }
 
 
@@ -329,7 +444,13 @@ def _request(asset: Asset, method: str, path: str, params: dict | None = None) -
     """Centralized REST call — see dev-rules.md FR-05."""
     url = f"{asset.base_url.rstrip('/')}{path}"
     headers = _auth_headers(asset)
-    headers["Content-Type"] = "application/json"
+    # No Content-Type header. It describes a request BODY, and every action
+    # here is a bodiless GET -- declaring "application/json" on a request with
+    # no body invites a strict server to parse the empty body as a JSON
+    # document and reject it -- the appliance answers that with an HTTP 401 and
+    # "The specified document is not valid JSON data". Add Content-Type back
+    # per-request if a POST/PUT with a real body is ever needed.
+    headers["Accept"] = "application/json"
 
     cert_path = key_path = ca_path = None
     try:
@@ -367,9 +488,9 @@ def _process_response(response: requests.Response) -> dict:
         except ValueError as e:
             raise ActionFailure(f"Unable to parse JSON response: {e}") from e
     elif not response.content:
-        # Confirmed live (2026-08-26): the real APIM returns HTTP 204 No
-        # Content (empty body, no Content-Type) for a "not found"/empty
-        # result on a list endpoint -- not a 200 with an empty JSON array.
+        # The real APIM returns HTTP 204 No Content (empty body, no
+        # Content-Type) for a "not found"/empty result on a list endpoint --
+        # not a 200 with an empty JSON array.
         # Every action in this connector expects a list from _ensure_list(),
         # so default to [] here, not {} -- a dict would fail that isinstance
         # check and surface a confusing "unexpected response shape" error
@@ -395,10 +516,9 @@ def test_connectivity(soar: SOARClient, asset: Asset) -> None:
     # No dedicated health-check service exists in SOLIDserver's real API.
     # ip_block_subnet_list is the one endpoint confirmed to exist on the real
     # APIM that needs no filter/params at all, making it the safest possible
-    # connectivity/auth check. limit=1 is required, not optional: the user
-    # confirmed live against the real APIM (2026-08-26) that a bare list call
-    # with no WHERE *and* no limit times out server-side; adding limit alone
-    # (no WHERE) is what actually works.
+    # connectivity/auth check. limit=1 is required, not optional: a bare list
+    # call with no WHERE *and* no limit times out server-side on the real APIM;
+    # limit alone (no WHERE) is what works.
     _request(asset, "GET", "/rest/ip_block_subnet_list", params={"limit": 1})
     logger.info("test connectivity OK (APIM /rest/ip_block_subnet_list reachable, mTLS + auth accepted)")
 
@@ -439,10 +559,11 @@ def get_ip_address(
             asset,
             "GET",
             "/rest/ip_address_list",
-            params={"WHERE": f"ip_addr='{hex_addr}'", "limit": limit},
+            params=_bounded_query(limit, f"ip_addr='{hex_addr}'"),
         ),
         "ip_address_list",
     )
+    records = records[:limit]
     if not records:
         raise ActionFailure(f"No IP address record found in SOLIDserver for {params.address}")
 
@@ -473,7 +594,13 @@ def get_ip_address(
 
 
 class ListSubnetsParams(Params):
-    name: str = Param(description="Subnet name to look up in SOLIDserver's IPAM (e.g. '10.20.30.0/24').", required=True)
+    # Four optional filters, AT MOST one used per call. None of them is
+    # required: `limit` alone lists subnets, the same bare bounded shape
+    # test_connectivity uses. See _select_optional_filter().
+    subnet_name: str = Param(description="Filter by subnet NAME -- the human label the subnet carries in IPAM (e.g. 'Corporate-LAN'), not its CIDR. To find a subnet by address you need the range columns, which this action does not yet expose.", required=False, default="")
+    subnet_id: str = Param(description="Filter by SOLIDserver subnet id.", required=False, default="")
+    parent_subnet_name: str = Param(description="Filter by parent subnet name — lists the subnets underneath it.", required=False, default="")
+    site_name: str = Param(description="Filter by space/site name — lists the subnets belonging to it. Filters on the API's 'parent_site_name' column.", required=False, default="")
     limit: int = Param(description=LIMIT_DESCRIPTION, required=False, default=DEFAULT_LIMIT)
 
 
@@ -493,7 +620,7 @@ class ListSubnetsOutput(ActionOutput):
 
 @app.action(
     name="list subnets",
-    description="Look up a subnet in SOLIDserver's IPAM by name (parent, space, address range, size, class) for enrichment. Returns one row per matching subnet -- raise 'limit' above the default of 1 to see them all. Output field names follow ip_address_list's confirmed subnet_* conventions but ip_block_subnet_list's own field set is not independently vendor-confirmed — check raw_json if a named field comes back empty.",
+    description="Look up subnets in SOLIDserver's IPAM (parent, space, address range, size, class) for enrichment. Only 'limit' need be set: with no filter this lists subnets bare, the same shape test connectivity uses. Optionally set AT MOST ONE filter: subnet_name, subnet_id, parent_subnet_name (lists the subnets under a parent) or site_name (lists the subnets in a space). Raise 'limit' above the default of 1 to see more than one row, which the parent/site filters and the unfiltered call usually need. Output field names follow ip_address_list's confirmed subnet_* conventions but ip_block_subnet_list's own field set is not independently vendor-confirmed — check raw_json if a named field comes back empty.",
     action_type="investigate",
     read_only=True,
 )
@@ -503,25 +630,20 @@ def list_subnets(
     asset: Asset,
 ) -> list[ListSubnetsOutput]:
     limit = _validate_int(params.limit, "limit")
+    # Resolved before the call, so an ambiguous filter fails without ever
+    # touching the APIM. LIST_SUBNETS_FILTERS carries the param -> WHERE column
+    # mapping, including the two that deliberately differ.
+    column, value = _select_optional_filter(params, LIST_SUBNETS_FILTERS)
+    where = f"{column}='{_sql_escape(value)}'" if column else None
     records = _ensure_list(
-        _request(
-            asset,
-            "GET",
-            "/rest/ip_block_subnet_list",
-            # The WHERE column and the SELECT column genuinely differ on
-            # this service: the record comes back with its name under "name",
-            # but the filterable column is "subnet_name". Vendor-confirmed
-            # against the real APIM -- filtering on "name" (the earlier
-            # assumption that WHERE matches SELECT) does not work.
-            # Other confirmed-filterable columns, if this ever needs them:
-            # subnet_id, parent_subnet_name, parent_site_name,
-            # start_ip_addr/end_ip_addr (hex), start_hostaddr/end_hostaddr (IP).
-            params={"WHERE": f"subnet_name='{_sql_escape(params.name)}'", "limit": limit},
-        ),
+        _request(asset, "GET", "/rest/ip_block_subnet_list",
+                 params=_bounded_query(limit, where)),
         "ip_block_subnet_list",
     )
+    records = _apply_client_limit(records, limit, where)
     if not records:
-        raise ActionFailure(f"No subnet found in SOLIDserver for {params.name}")
+        where = f" for {column}='{value}'" if column else ""
+        raise ActionFailure(f"No subnet found in SOLIDserver{where}")
 
     outputs = []
     for record in records:
@@ -532,7 +654,7 @@ def list_subnets(
                 # "name" is the subnet's own identity field on
                 # ip_block_subnet_list -- not "subnet_name", which is the
                 # guess borrowed from ip_subnet_list's public docs.
-                subnet_name=record.get("name", params.name),
+                subnet_name=record.get("name", ""),
                 parent_subnet=record.get("parent_subnet_name", ""),
                 space=record.get("site_name", ""),
                 tree_path=record.get("tree_path", ""),
@@ -581,10 +703,11 @@ def get_ip_pool(
             asset,
             "GET",
             "/rest/ip_pool_list",
-            params={"WHERE": f"pool_name='{_sql_escape(params.name)}'", "limit": limit},
+            params=_bounded_query(limit, f"pool_name='{_sql_escape(params.name)}'"),
         ),
         "ip_pool_list",
     )
+    records = records[:limit]
     if not records:
         raise ActionFailure(f"No IP pool found in SOLIDserver for {params.name}")
 

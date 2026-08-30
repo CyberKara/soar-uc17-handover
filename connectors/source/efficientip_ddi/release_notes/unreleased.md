@@ -1,5 +1,312 @@
 **Unreleased**
 
+## 1.0.1 (2026-08-29 — comment cleanup; no behaviour change)
+
+Stripped session/investigation narrative out of `.py` and `.json` source across
+both connectors, their consts, both mock copies and both test suites: dates,
+"confirmed live", "user-confirmed", "user decision", and references to how a
+finding was arrived at. Code comments now read as timeless explanations of why
+the current behaviour is what it is. The investigation record lives in the UC17
+implementation plan, `next-steps.md` and project memory, where it belongs.
+
+A connector's `README.md` is deliberately **not** included in this sweep — it is
+reference material that ships to airgapped operators and legitimately carries
+dated troubleshooting tables.
+
+No functional change. Version bumped only so the installed artifact and the
+shipped artifact stay the same thing rather than differing by their comments.
+
+## 1.0.0 (2026-08-29, later still — fresh app identity for the airgapped install)
+
+**Not a rollback. A deliberate identity reset**, at the user's request, ahead of
+the next airgapped handover.
+
+SOAR correlates an installed app by its `appid` and carries GUI state across
+versions of the same one. Reusing the identity meant the airgapped instance kept
+trying to reconcile the new package against its memory of the old install, with
+visibly wrong results in the GUI. A fresh GUID makes it a genuinely new app
+rather than an upgrade wearing stale state.
+
+| | Was | Now |
+|---|---|---|
+| SDK `appid` | `71a7abcc-…` | `b847c7d1-…` |
+| SDK version | 1.0.14 | **1.0.0** |
+| Classic `appid` | `4e9c768b-…` | `daa10f0c-…` |
+| Classic version | 1.0.11 | **1.0.0** |
+
+**Names are unchanged** (`efficientip_ddi`, `EfficientIP DDI (Classic)`) — user
+decision. The `appid` is the correlation key; the names stay readable.
+
+**No code changed.** Every fix through 1.0.14 / classic 1.0.11 is present
+byte-for-byte: the WHERE/limit mutual exclusion, credential stripping, the
+`Accept` header, optional subnet filters, and the label-shaped fixtures. The
+version number no longer maps to this file's history above — read the entries
+above 1.0.0 as the provenance of what this package contains.
+
+**Playbooks had to be rebound.** A playbook's action nodes carry `connectorId`
+— the appid — so all three UC17 playbooks referenced the old GUIDs in 12 places
+and would not have resolved their action blocks against the new apps. Updated
+in `soar-playbooks` and redeployed.
+
+**These install as NEW apps, side by side with the old ones.** They do not
+replace them. On any environment carrying the previous identity, the old app
+should be deleted by hand once the new one is verified — otherwise two entries
+coexist. Same caveat as the previous identity reset.
+
+## 1.0.14 (2026-08-29, later still — NEVER send WHERE and limit together)
+
+**The real-appliance 401 is solved, and it was ours.** User-observed on the
+appliance: a `WHERE`-filtered call carrying `limit` makes the backend **abort
+the query** and return HTTP 401; the identical call **without** `limit` succeeds
+(slower, because the filter is actually doing work).
+
+Every observation this connector has ever collected fits one rule:
+
+| `WHERE` | `limit` | Result |
+|---|---|---|
+| no | no | times out — unbounded full scan (v1.0.2) |
+| no | yes | works — what `test_connectivity` does |
+| yes | no | works — the user's `ip_address_list` call |
+| yes | yes | **fails** — backend aborts, HTTP 401 |
+
+A `WHERE` already bounds the query. `limit` is redundant beside one and
+actively harmful.
+
+**The cause was the fix from v1.0.2**, which added `limit=1` "defensively" to
+`get_ip_address`, `list_subnets` and `get_ip_pool` — and said so at the time:
+*"untested whether `WHERE` alone is sufficient to bound those queries on the
+real backend, so this is cheap insurance."* It was not insurance; it was the
+bug, and it broke exactly those three actions while leaving `test_connectivity`
+(limit only) and `list_aliases` (path-param, neither) healthy. That asymmetry
+was visible in the symptom for days and read as a service-specific gateway
+problem instead.
+
+`_bounded_query()` now sends one or the other, never both. A caller's `limit` is
+still honoured on a filtered call — applied client-side via
+`_apply_client_limit()`, since it cannot go on the wire.
+
+**Six new tests pin this**, and they carry more weight than usual: the mock
+accepts both parameters happily, so it can never reproduce this failure. These
+tests are the only thing standing between the project and shipping it a second
+time.
+
+Mirrored into the classic twin (1.0.11). 41 classic tests passing (was 35).
+
+### Theories that died getting here
+
+Recorded because the sequence is the lesson, not the answer:
+
+1. **DDI credentials not base64-encoded** — disproven from source; the 1.0.3 fix
+   was present.
+2. **`Content-Type: application/json` on a bodiless GET** — exonerated with no
+   new test: the connector sets it on *every* request including the passing
+   `test_connectivity`, so both arms of the experiment already existed.
+3. **The percent-encoded `=` operator (`%3D`)** — killed by one user data point
+   (`ip_address_list?WHERE=ip_addr%3D%27...%27` returns 200). A fix had been
+   written; it was **reverted before shipping** rather than change a wire format
+   that demonstrably works.
+4. **Per-service APIM policy on `ip_block_subnet_list`** — plausible, and wrong.
+   It was never about the service.
+
+Four theories, three of them mine, all killed by a single cheap observation the
+user already had. **Ask for the observation before building the fix.**
+
+## 1.0.13 (2026-08-29, later still — subnet names are LABELS, not CIDRs)
+
+**A wrong data model that had been baked into the fixtures since the mock was
+written, found by the user in one line: "subnet_name can't be ip".**
+
+Real subnet names on the appliance look like `BLABL_BLABL-LABLLA` — underscores
+and hyphens, no dots, no slashes. The mock seeded `name: "10.20.30.0/24"`, both
+manifests gave `'10.20.30.0/24'` as the parameter example, and both diagnostic
+playbooks filtered on it. Every reader — human or model — came away believing
+subnet names are CIDR-shaped.
+
+Two real costs, neither of them cosmetic:
+
+- **It manufactured a phantom bug.** The only reason a `/` ever appeared in a
+  `WHERE` value was that fake CIDR name. Real names contain nothing that
+  percent-encodes, so the `%2F`-blocked-by-the-gateway theory was chasing an
+  artefact of our own test data. Hours went into it.
+- **It hid the real requirement.** If names are labels, then *"which subnet
+  contains this IP?"* — the question anyone actually asks of IPAM — cannot be
+  answered through `subnet_name` at all. It needs `start_hostaddr`/`end_hostaddr`,
+  the **deferred range filters**. Those were ranked nice-to-have; they are in
+  fact the point, and name filtering is the marginal feature.
+
+Fixed: both parameter descriptions now say NAME-not-CIDR and point at the range
+columns for address lookup; both mock copies reseeded to `CORP_LAN-USERS` /
+`CORP_LAN-PRINTERS` under parent `CORP_CORE-NET`, with the addresses left where
+they belong (the `*_ip_addr` range fields); both diagnostic playbooks and both
+test suites follow. The seed carries a comment explaining why, so it does not
+drift back.
+
+Same failure class as the `WHERE=name='...'` bug: **the mock agreed with the
+code, so both were wrong together and nothing local could tell.** A fixture that
+invents domain data is not neutral — it teaches, and it taught wrong. Test data
+should come from the real system or be visibly synthetic, never plausible-and
+-invented.
+
+61 tests still green (35 classic connector, 26 mock), `check_usercode_sync.py`
+clean across all 21 playbooks.
+
+## 1.0.12 (2026-08-29, later still — drop Content-Type from bodiless GETs)
+
+Every action here is a **GET with no body**, yet `_request()` set
+`Content-Type: application/json` on all of them, unconditionally, since the
+connector's first version. `Content-Type` describes a request body. Declaring
+one that does not exist invites a strict server to read an empty body as a JSON
+document and reject it. Replaced with `Accept: application/json`, which is what
+was actually meant — we care what comes back, not what we did not send.
+
+**Why now.** Testing classic 1.0.6 against the real appliance, `list subnets`
+returned **HTTP 401** with the appliance's own error body carrying
+`"message": "The specified document is not valid JSON data"`. That string is in
+none of our code — it is the appliance saying it tried to parse a document and
+failed. The only JSON document this connector ever claimed to send is the
+phantom one this header announced.
+
+**Explicitly unconfirmed as the cause.** The theory has a hole: `test
+connectivity` sends the identical header and passes, which this does not
+explain. A one-line curl probe settles it — the known-good call, plus only
+`-H "Content-Type: application/json"`. The header is wrong on its own terms
+regardless of how that comes out, which is why the fix ships now rather than
+waiting.
+
+Also re-pinned by test, because it was the first hypothesis raised and deserves
+a permanent answer: **`X-DDI-Username`/`X-DDI-Password` are base64-encoded**
+(the 1.0.3 fix), verified by decoding them back in
+`test_ddi_headers_are_base64_encoded`. They were never sent in plain text in
+1.0.6.
+
+Mirrored into the classic twin (1.0.9). 35 classic tests passing (was 32).
+
+## 1.0.11 (2026-08-29, later — `list subnets` filters are fully optional)
+
+**User decision, reversing the "exactly one filter required" rule shipped hours
+earlier in 1.0.10.** `limit` is now the only thing that need be set: with no
+filter, `list subnets` issues a bare bounded call — `GET
+/rest/ip_block_subnet_list?limit=N`, no `WHERE` on the wire at all.
+
+That is not a new shape. It is exactly what `test_connectivity` has always
+done, it is the one call confirmed to work against the real APIM, and
+`ip_block_subnet_list` is documented as needing no filter params. The earlier
+refusal was defending against a playbook losing its filter binding and
+enriching a random subnet; the user weighed that against being forced to supply
+a filter and chose the simpler contract.
+
+It also matters right now for a live reason: a **401 on `list subnets` against
+the real appliance while `test connectivity` passes** was reported this session.
+The two calls go to the same URL with byte-identical auth headers — the only
+difference is the `WHERE` parameter — so the gateway is reacting to the clause
+itself, not to any credential. An unfiltered call is the workaround as well as
+the diagnostic. See the UC17 plan's WHERE-rejection section.
+
+**Two filters is still refused**, unchanged: that is about `AND` being
+unconfirmed on the real APIM, an unrelated question to whether zero filters is
+legal.
+
+The classic twin's selector was also reworked to return an explicit
+`(ok, column, value)` rather than making the caller infer "no filter" from
+"error" by inspecting `action_result`'s status — with zero filters now a
+success, those two cases had to stop sharing a return shape.
+
+Mirrored into the classic twin (1.0.8). 32 classic tests still passing; the
+former no-filter refusal test now asserts the opposite — no `WHERE` on the
+wire, `limit` still on it, two rows returned.
+
+## 1.0.10 (2026-08-29 — purpose-built subnet filters; strip hand-entered credentials)
+
+### Purpose-built `WHERE` filters on `list subnets`
+
+Closes the design item deferred at 1.0.8. `list subnets` took one required
+`name` param and could only ever answer "tell me about this exact subnet". It
+now exposes the confirmed-filterable columns as named parameters:
+
+| Parameter | WHERE column | Answers |
+|---|---|---|
+| `subnet_name` | `subnet_name` | this exact subnet (the old `name`) |
+| `subnet_id` | `subnet_id` | this subnet by id |
+| `parent_subnet_name` | `parent_subnet_name` | the subnets under a parent |
+| `site_name` | `parent_site_name` | the subnets in a space/site |
+
+Two of those mappings are deliberately not identities, so the mapping lives in
+a `LIST_SUBNETS_FILTERS` table rather than an f-string — the same mismatch
+class that shipped as `WHERE=name='...'` and passed locally for two versions.
+
+**Exactly one filter, enforced before the call.** Zero filters and two filters
+both fail without touching the APIM. Two is refused because AND-composition has
+never been confirmed on the real APIM — silently dropping a condition would be
+the same coded guess this connector keeps getting caught by. Zero is refused
+because an unfiltered lookup returns arbitrary rows: a playbook that lost its
+filter binding would enrich against a random subnet and look like it worked.
+(`test_connectivity` still makes its bare bounded call; that path is unchanged.)
+
+**Ranges deliberately not built.** `start_ip_addr`/`end_ip_addr` (hex) and
+`start_hostaddr`/`end_hostaddr` (dotted IP) are confirmed filterable, but a
+useful range needs comparison operators and/or AND, neither of which anyone has
+confirmed. The UC17 plan carries the three curl probes that would settle it.
+
+**Breaking parameter change:** `name` → `subnet_name`. Both diagnostic
+playbooks updated (`.py` and `.json`, `requiredParameters` now `[]`, sync check
+clean). `get ip pool`'s own `name` param is untouched. Nothing else binds this
+action — the enrich playbook never called it.
+
+Mirrored into the classic twin (1.0.7), manifest included. The mock gained a
+second subnet under the same parent and site, without which a parent/site
+filter would return one row and prove nothing — the same trap the single-alias
+seed set. Coverage: 32 classic-connector tests (was 24), 26 mock tests (was 22).
+
+### Strip whitespace from every hand-entered credential
+
+**Latent bug, one of the two candidate causes of the real appliance's HTTP 401
+on 2026-08-28.** `_auth_headers()` base64-encoded `client_id`, `client_secret`,
+`ddi_username` and `ddi_password` exactly as stored. The three PEM fields get
+whitespace-normalised by `_normalize_pem()`; these four never did.
+
+On an airgapped box every one of these is typed or pasted into a SOAR asset
+field by hand, and base64 preserves whatever surrounds the value — so a single
+trailing newline yields a credential that is wrong by one byte and a 401 that
+is indistinguishable from a genuinely wrong password. All four are now
+`.strip()`ed at the point of use.
+
+This does **not** confirm the 401's cause; the other candidate (the export
+package shipping the lab's `client_id`/`ddi_username` as real values while only
+the secrets were placeholdered) is fixed on the `soar-playbooks`
+`export_handover.py` side and remains the leading explanation. Discriminating
+between them still needs the full APIM error body.
+
+Mirrored into the classic twin (1.0.7). Regression coverage pinned from both
+directions in `efficientip_ddi_classic/tests/`: whitespace around any of the
+four must not change the encoded headers
+(`test_auth_headers_strip_pasted_whitespace`), and stripping must not flatten a
+genuinely different value into a matching one
+(`test_auth_headers_still_distinguish_genuinely_different_values`). The first
+fails against the pre-fix connector, verified.
+
+## 1.0.9 (2026-08-28 — no code change; ships the bundled build to soar8)
+
+**Version bump only. No source, manifest, or action behaviour changes from
+1.0.8.**
+
+Its whole purpose is to get past the install gate. SOAR refuses an install whose
+`app_version` is less than or equal to the live one, and soar8's app 205 was
+already at 1.0.8 — so the bundled package could not replace the **stock** one
+installed there without a new number.
+
+Why replace it: app 205 was running the SDK-stock build (62 wheels, zero
+platform-provided), while the artifact carried across the air gap is the bundled
+one (70 wheels, all 7 platform-provided packages included). Everything
+live-verified on soar8 was therefore exercising a different package from the one
+that ships. This makes "tested" and "shipped" the same artifact.
+
+This ends the stock/bundled A/B **on soar8 only**. That costs nothing: soar8 was
+always known to provide those packages, and the open question — the real
+airgapped appliance throwing `ModuleNotFoundError: requests` on a package that
+lacked them — can only be settled on the appliance itself. Build a stock variant
+with `tools/build_sdk_app.py --stock` if that comparison is ever needed again;
+it now writes `<name>-stock.tgz` and cannot overwrite the shipping artifact.
+
 ## 1.0.8 (2026-08-27, later — real filter column for ip_block_subnet_list)
 
 **Real bug, found by asking the user rather than by testing.** `list subnets`

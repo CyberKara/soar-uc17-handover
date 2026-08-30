@@ -1,5 +1,5 @@
 {
-    "appid": "4e9c768b-5401-41bd-bbbb-493aac0d3d03",
+    "appid": "daa10f0c-a8ee-497d-88f0-9b937e5ff5fe",
     "name": "EfficientIP DDI (Classic)",
     "description": "Analyst-driven IP/DNS lookup enrichment against an EfficientIP SOLIDserver DDI backend reached through an APIM gateway. Classic BaseConnector twin of the SDK-based efficientip_ddi app, built for side-by-side airgapped comparison -- same actions, same auth model, same corrected field names.",
     "type": "ddi",
@@ -10,7 +10,7 @@
     "logo_dark": "logo_dark.svg",
     "publisher": "Ted",
     "license": "Copyright (c) 2026",
-    "app_version": "1.0.6",
+    "app_version": "1.0.1",
     "utctime_updated": "2026-08-26T00:00:00.000000Z",
     "package_name": "phantom_efficientip_ddi_classic",
     "main_module": "efficientip_ddi_classic_connector.py",
@@ -210,22 +210,40 @@
         {
             "action": "list subnets",
             "identifier": "list_subnets",
-            "description": "Look up a subnet in SOLIDserver's IPAM by name (parent, space, address range, size, class) for enrichment. Output field names follow ip_address_list's confirmed subnet_* conventions but ip_block_subnet_list's own field set is not independently vendor-confirmed -- check raw_json if a named field comes back empty.",
+            "description": "Look up subnets in SOLIDserver's IPAM (parent, space, address range, size, class) for enrichment. Only 'limit' need be set: with no filter this lists subnets bare, the same shape test connectivity uses. Optionally set AT MOST ONE filter: subnet_name, subnet_id, parent_subnet_name (lists the subnets under a parent) or site_name (lists the subnets in a space). Raise 'limit' above the default of 1 to see more than one row, which the parent/site filters and the unfiltered call usually need. Output field names follow ip_address_list's confirmed subnet_* conventions but ip_block_subnet_list's own field set is not independently vendor-confirmed -- check raw_json if a named field comes back empty.",
             "type": "investigate",
             "read_only": true,
             "parameters": {
-                "name": {
-                    "description": "Subnet name to look up in SOLIDserver's IPAM (e.g. '10.20.30.0/24')",
+                "subnet_name": {
+                    "description": "Filter by subnet NAME -- the human label the subnet carries in IPAM (e.g. 'Corporate-LAN'), not its CIDR. To find a subnet by address you need the range columns, which this action does not yet expose.",
                     "data_type": "string",
-                    "required": true,
+                    "required": false,
                     "order": 0
+                },
+                "subnet_id": {
+                    "description": "Filter by SOLIDserver subnet id",
+                    "data_type": "string",
+                    "required": false,
+                    "order": 1
+                },
+                "parent_subnet_name": {
+                    "description": "Filter by parent subnet name -- lists the subnets underneath it",
+                    "data_type": "string",
+                    "required": false,
+                    "order": 2
+                },
+                "site_name": {
+                    "description": "Filter by space/site name -- lists the subnets belonging to it. Filters on the API's 'parent_site_name' column.",
+                    "data_type": "string",
+                    "required": false,
+                    "order": 3
                 },
                 "limit": {
                     "description": "Maximum number of records to return (default 1). Must be a positive whole number -- an unbounded call times out server-side on the real APIM, so a limit always goes on the wire.",
                     "data_type": "numeric",
                     "required": false,
                     "default": 1,
-                    "order": 1
+                    "order": 4
                 }
             },
             "output": [

@@ -185,11 +185,13 @@ def run_list_subnets(action=None, success=None, container=None, results=None, ha
     phantom.debug("run_list_subnets() called")
 
     ################################################################################
-    # Static test name -- 10.20.30.0/24 is the mock's known-good seed subnet.
+    # Static test name -- CORP_LAN-USERS is the mock's known-good seed subnet.
+    # Subnet names are LABELS, not CIDRs: a subnet's address lives in its range
+    # fields, never in its name.
     ################################################################################
 
     parameters = [{
-        "name": "10.20.30.0/24",
+        "subnet_name": "CORP_LAN-USERS",
     }]
 
     phantom.act("list subnets", parameters=parameters, name="run_list_subnets", assets=[ASSET], callback=note_list_subnets)

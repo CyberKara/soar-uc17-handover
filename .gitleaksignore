@@ -19,12 +19,17 @@
 #
 # NOTE: these fingerprints are line-pinned, and they HAVE drifted every time a
 # connector changed: the classic connector's markers moved 402 -> 490-492
-# (v1.0.6) -> 582-584 (v1.0.1, after the WHERE/limit fix and the comment
-# sweep). The SDK app's have held at 128-130. Re-check both whenever either
-# connector changes, or the gate will miss a real finding or fail the commit.
-connectors/source/efficientip_ddi_classic/efficientip_ddi_classic_connector.py:private-key:582
-connectors/source/efficientip_ddi_classic/efficientip_ddi_classic_connector.py:private-key:583
-connectors/source/efficientip_ddi_classic/efficientip_ddi_classic_connector.py:private-key:584
+# (v1.0.6) -> 582-584 (v1.0.1) -> 570-572 (v1.0.2, after _apply_client_limit and
+# its three call sites were removed in the WHERE/limit revert). The SDK app's
+# have held at 128-130 throughout. Re-check both whenever either connector
+# changes, or the gate will miss a real finding or fail the commit.
+#
+# Re-verified 2026-08-31 for this export: the private-key rule fires on the three
+# BEGIN *PRIVATE KEY* delimiter lines in each file (the BEGIN CERTIFICATE line
+# above them does not trip it, which is why only three lines per file are pinned).
+connectors/source/efficientip_ddi_classic/efficientip_ddi_classic_connector.py:private-key:570
+connectors/source/efficientip_ddi_classic/efficientip_ddi_classic_connector.py:private-key:571
+connectors/source/efficientip_ddi_classic/efficientip_ddi_classic_connector.py:private-key:572
 connectors/source/efficientip_ddi/src/app.py:private-key:128
 connectors/source/efficientip_ddi/src/app.py:private-key:129
 connectors/source/efficientip_ddi/src/app.py:private-key:130

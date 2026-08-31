@@ -508,7 +508,51 @@ genuinely narrows *and* returns every child rather than truncating, and that the
 non-identity `site_name`→`parent_site_name` mapping resolves correctly against a
 real backend response — neither of which the single-subnet seed could show.
 
-## Second real-appliance 401 — on `list subnets` only (2026-08-29, open)
+## [!] The `WHERE` + `limit` rule was WRONG — reverted 2026-08-31
+
+**Read this before any section below that discusses the `list subnets` 401.**
+
+The rule "never send `WHERE` and `limit` together" (SDK 1.0.14 / classic 1.0.11)
+is **disproven and reverted** in SDK 1.0.3 / classic 1.0.2. The real appliance
+returns **HTTP 200** for a filtered call carrying `limit=1`, and bounds it to
+exactly one row — confirmed on `ip_block_subnet_list` *and* `ip_address_list`.
+
+**It was a shell artefact, not backend behaviour.** The rule rested on one
+observation: a filtered call "with `limit=1`" terminated early and returned,
+while the same call without it waited. An unquoted URL splits at `&`:
+
+```bash
+curl https://host/rest/ip_block_subnet_list?WHERE=subnet_name='X'&limit=1
+#  -> curl runs IN THE BACKGROUND with WHERE only; `limit=1` is a separate
+#     shell statement and never reaches curl. The prompt returns instantly --
+#     that is the "it terminates the process" symptom.
+
+curl 'https://host/rest/ip_block_subnet_list?WHERE=subnet_name=X&limit=1'
+#  -> whole URL reaches curl, foreground, HTTP 200, limit=1 returns 1 row.
+```
+
+Both arms sent **identical `WHERE`-only requests**. The observation carried no
+information about `limit`.
+
+**What stands:** a list call must always carry a bound. With neither `WHERE`
+nor `limit` the backend scans unbounded and times out. `limit` now always goes
+on the wire, and the client-side truncation helper is gone — with it the
+"accepted limitation" that multi-match filters transferred every row.
+
+**What is now unexplained:** the original 401 on `list subnets` at classic
+1.0.6 was real and came through `requests` with no shell involved. `limit` is
+exonerated and **no replacement cause is established**. Candidates that changed
+since, none proven: `name` → `subnet_name` (1.0.8), `Content-Type` → `Accept`
+(1.0.12), the credential `.strip()` (1.0.10), and a target-side asset-config
+fix. Three causes have now been asserted for this 401 and none survived — the
+next one needs evidence first.
+
+## Second real-appliance 401 — on `list subnets` only (SUPERSEDED — see above)
+
+> **Its stated resolution — `WHERE` + `limit` together — is now DISPROVEN.** — see the
+> WHERE/limit section. The theorising below is kept because the sequence of
+> wrong turns is the useful part, but read it as a record of the investigation,
+> not as a description of the fault.
 
 User testing **classic v1.0.6** against the real appliance: `test connectivity`
 passes, `list subnets` returns **HTTP 401**.
@@ -574,7 +618,14 @@ preserved, and the client-side-filtering fallback is not needed.
 > being believed.
 
 
-## DECISIVE: it is the SERVICE, not the encoding or the auth (2026-08-29)
+## Ruling out the encoding (2026-08-29) — and a "decisive" conclusion that was wrong
+
+> **This section's original conclusion — "it is the service" — was DISPROVEN.**
+> `ip_block_subnet_list` accepts `WHERE` perfectly well; what it will not accept
+> is `WHERE` alongside `limit`. The evidence below is sound and the encoding
+> theory really was killed here; the *inference* drawn from it (per-service
+> gateway policy) was not. Left in place deliberately: a confidently-titled
+> wrong conclusion is exactly the thing worth being able to re-read later.
 
 User, from the real appliance:
 

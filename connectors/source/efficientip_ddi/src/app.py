@@ -157,7 +157,6 @@ class Asset(BaseAsset):
     client_cert: str = AssetField(
         description="PEM client certificate presented to APIM for mTLS.",
         required=True,
-        sensitive=True,
     )
     client_key: str = AssetField(
         description="PEM private key matching client_cert.",
@@ -168,7 +167,6 @@ class Asset(BaseAsset):
         description="PEM CA bundle to verify APIM's server certificate (optional — leave blank to use system CAs).",
         required=False,
         default="",
-        sensitive=True,
     )
     verify_ssl: bool = AssetField(
         description="Verify APIM's TLS server certificate.",
@@ -310,50 +308,21 @@ def _sql_escape(value: str) -> str:
 
 
 def _bounded_query(limit: int, where: str | None = None) -> dict:
-    """Build the query params. NEVER send `WHERE` and `limit` together.
+    """Build the query params. `limit` ALWAYS goes on the wire.
 
-    The backend's behaviour across the four combinations:
+    A list call carrying neither `WHERE` nor `limit` makes the backend attempt
+    an unbounded full scan and time out server-side, so a bound is mandatory.
+    `limit` is that bound, and it works server-side alongside a `WHERE`:
+    confirmed against the real appliance, where a filtered call with `limit=1`
+    returns HTTP 200 and exactly one row.
 
-        WHERE   limit   result
-        no      no      times out -- unbounded full scan
-        no      yes     works     -- what test_connectivity does
-        yes     no      works     -- slower, the filter is doing real work
-        yes     yes     FAILS     -- backend aborts the query, returns HTTP 401
-
-    A `WHERE` already bounds the query, so `limit` alongside one is redundant
-    and actively harmful.
-
-    The caller's `limit` is still honoured on a filtered call, just applied
-    client-side by the caller truncating the result -- see _apply_client_limit.
-
-    Two different reasons the drop is safe, worth keeping straight:
-
-      - Exact-match filters on a unique value (ip_addr, subnet_name, subnet_id,
-        pool_name) can only match one record, so `limit` was never doing
-        anything and nothing is lost.
-      - parent_subnet_name and parent_site_name deliberately match MANY records,
-        so `limit` is NOT redundant there -- it is genuinely the caller's
-        intent, which is why _apply_client_limit exists rather than the bound
-        simply being discarded.
-
-    ACCEPTED LIMITATION: on a broad filter (e.g. a site-wide parent_site_name)
-    the appliance returns every match and we bound it only after transfer. This
-    is exactly the risk v1.0.2 was reaching for when it added the limit, and
-    there is no server-side remedy -- the one parameter that would bound it is
-    the one the backend refuses alongside a WHERE. Fine for the exact-match
-    lookups this connector is built around; watch it if a site-wide filter is
-    ever pointed at a large IPAM.
+    Do not reintroduce a "never send both" rule here. One was shipped at 1.0.14
+    on the strength of a curl observation that turned out to be a shell
+    artefact -- an unquoted URL splits at `&`, so the arm believed to carry
+    `limit` never sent it and merely backgrounded curl. Both arms of that
+    comparison were identical `WHERE`-only requests. See the UC17 plan.
     """
-    return {"WHERE": where} if where else {"limit": limit}
-
-
-def _apply_client_limit(records: list, limit: int, where: str | None) -> list:
-    """Honour `limit` on a filtered call, where it cannot go on the wire.
-
-    Only truncates when a WHERE was sent; an unfiltered call was already
-    bounded server-side.
-    """
-    return records[:limit] if where else records
+    return {"WHERE": where, "limit": limit} if where else {"limit": limit}
 
 
 # Caller-facing filter parameter -> the WHERE column it actually filters on,
@@ -640,7 +609,6 @@ def list_subnets(
                  params=_bounded_query(limit, where)),
         "ip_block_subnet_list",
     )
-    records = _apply_client_limit(records, limit, where)
     if not records:
         where = f" for {column}='{value}'" if column else ""
         raise ActionFailure(f"No subnet found in SOLIDserver{where}")

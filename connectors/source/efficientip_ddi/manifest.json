@@ -4,7 +4,7 @@
     "appid": "b847c7d1-ee21-4af8-a92c-a91f5eb4b00d",
     "type": "ddi",
     "product_vendor": "EfficientIP",
-    "app_version": "1.0.1",
+    "app_version": "1.0.4",
     "license": "Copyright (c) 2026 Karabox Labs.",
     "min_phantom_version": "7.0.0",
     "package_name": "phantom_efficientip_ddi",
@@ -15,7 +15,7 @@
     "python_version": "3.13",
     "product_version_regex": ".*",
     "publisher": "Ted",
-    "utctime_updated": "2026-08-29T19:54:09.642088Z",
+    "utctime_updated": "2026-08-31T10:18:34.531012Z",
     "fips_compliant": false,
     "contributors": [],
     "configuration": {
@@ -55,7 +55,7 @@
             "category": "connectivity"
         },
         "client_cert": {
-            "data_type": "password",
+            "data_type": "string",
             "required": true,
             "description": "PEM client certificate presented to APIM for mTLS.",
             "order": 5,
@@ -69,7 +69,7 @@
             "category": "connectivity"
         },
         "client_ca": {
-            "data_type": "password",
+            "data_type": "string",
             "required": false,
             "description": "PEM CA bundle to verify APIM's server certificate (optional \u2014 leave blank to use system CAs).",
             "order": 7,

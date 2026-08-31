@@ -132,7 +132,6 @@ class EfficientipDdiClassicConnector(BaseConnector):
         records = self._ensure_list(records, action_result)
         if records is None:
             return action_result.get_status()
-        records = self._apply_client_limit(records, limit, "ip_addr")
         if not records:
             return action_result.set_status(
                 phantom.APP_ERROR, "No IP address record found in SOLIDserver for {}".format(address)
@@ -191,7 +190,6 @@ class EfficientipDdiClassicConnector(BaseConnector):
         records = self._ensure_list(records, action_result)
         if records is None:
             return action_result.get_status()
-        records = self._apply_client_limit(records, limit, where)
         if not records:
             where = " for {}='{}'".format(column, value) if column else ""
             return action_result.set_status(
@@ -231,7 +229,6 @@ class EfficientipDdiClassicConnector(BaseConnector):
         records = self._ensure_list(records, action_result)
         if records is None:
             return action_result.get_status()
-        records = self._apply_client_limit(records, limit, "pool_name")
         if not records:
             return action_result.set_status(phantom.APP_ERROR, "No IP pool found in SOLIDserver for {}".format(name))
 
@@ -504,31 +501,22 @@ class EfficientipDdiClassicConnector(BaseConnector):
         return value.replace("'", "''")
 
     def _bounded_query(self, limit, where=None):
-        """Build the query params. NEVER send `WHERE` and `limit` together.
+        """Build the query params. `limit` ALWAYS goes on the wire.
 
-        The backend's behaviour across the four combinations:
+        A list call carrying neither WHERE nor limit makes the backend attempt
+        an unbounded full scan and time out server-side, so a bound is
+        mandatory. limit is that bound, and it works server-side alongside a
+        WHERE: confirmed against the real appliance, where a filtered call with
+        limit=1 returns HTTP 200 and exactly one row.
 
-            WHERE   limit   result
-            no      no      times out -- unbounded full scan (v1.0.2)
-            no      yes     works     -- what test_connectivity does
-            yes     no      works     -- slower, the filter is doing real work
-            yes     yes     FAILS     -- backend aborts, returns HTTP 401
-
-        A WHERE already bounds the query, so limit alongside one is redundant
-        and actively harmful.
-
-        A caller's limit is still honoured on a filtered call, applied
-        client-side after the response -- see _apply_client_limit.
+        Do not reintroduce a "never send both" rule here. One was shipped at
+        classic 1.0.11 on the strength of a curl observation that turned out to
+        be a shell artefact -- an unquoted URL splits at `&`, so the arm
+        believed to carry limit never sent it and merely backgrounded curl.
+        Both arms of that comparison were identical WHERE-only requests. See
+        the UC17 plan.
         """
-        return {"WHERE": where} if where else {"limit": limit}
-
-    def _apply_client_limit(self, records, limit, where):
-        """Honour `limit` on a filtered call, where it cannot go on the wire.
-
-        Only truncates when a WHERE was sent; an unfiltered call was already
-        bounded server-side.
-        """
-        return records[:limit] if where else records
+        return {"WHERE": where, "limit": limit} if where else {"limit": limit}
 
     def _select_optional_filter(self, param, filter_map, action_result):
         """Pick at most one supplied filter, returning (where_column, value).

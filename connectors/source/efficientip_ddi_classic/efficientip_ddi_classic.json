@@ -10,7 +10,7 @@
     "logo_dark": "logo_dark.svg",
     "publisher": "Ted",
     "license": "Copyright (c) 2026",
-    "app_version": "1.0.1",
+    "app_version": "1.0.2",
     "utctime_updated": "2026-08-26T00:00:00.000000Z",
     "package_name": "phantom_efficientip_ddi_classic",
     "main_module": "efficientip_ddi_classic_connector.py",

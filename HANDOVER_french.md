@@ -1,6 +1,6 @@
 # UC17 — EfficientIP DDI Enrichment — Paquet de transfert (déploiement air-gapped)
 
-Généré le 2026-08-29 19:54 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
+Généré le 2026-08-31 10:18 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
 
 Ce paquet est autonome — tout ce qu'il faut pour déployer ce cas d'usage manuellement
 dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
@@ -11,12 +11,20 @@ dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
 
 | Chemin | Contenu |
 |--------|---------|
-| `connectors/` | Paquet(s) applicatif(s) connecteur : efficientip_ddi.tgz, efficientip_ddi_classic-v1.0.1.tgz |
+| `connectors/` | Paquet(s) applicatif(s) connecteur : efficientip_ddi.tgz, efficientip_ddi_classic-v1.0.2.tgz |
 | `connectors/source/` | Même(s) connecteur(s), extrait(s) — pour lecture, pas pour import |
 | `playbooks/*.tgz` (PB) | efficientip_ddi_enrich, efficientip_ddi_action_test, efficientip_ddi_classic_action_test |
 | `playbooks/source/` | Mêmes CF/playbooks, extraits — pour lecture, pas pour import |
 | `assets/*.json` | Modèles de configuration d'assets (identifiants masqués — voir ci-dessous) |
 | `docs/` | Document de plan d'implémentation, pour le contexte de conception complet |
+
+## [!] Mise à niveau d'une installation existante — à lire en premier
+
+Ne concerne que le cas où cette application est déjà installée sur la cible
+depuis un paquet précédent. Sur une cible vierge, passez à l'ordre
+d'installation.
+
+- **Si vous avez déjà un actif (asset) pour cette application issu d'un paquet antérieur (v1.0.3 ou plus ancien), vous devez ressaisir `client_cert` et `client_ca` après l'installation.** Ces deux champs sont passés d'un type secret à un champ texte simple en v1.0.4, car un certificat et une chaîne d'autorité de certification ne sont pas des secrets — seule la clé privée en est un. SOAR ne convertit pas ce qui était déjà enregistré : l'ancienne valeur chiffrée reste en place puis est utilisée comme si elle était le texte du certificat. L'application s'installe correctement et l'actif semble toujours rempli, mais toutes les actions échouent. L'erreur mentionne TLS ou l'authentification, ce qui est trompeur — vos identifiants ne sont pas en cause. Ouvrez l'actif, recollez le certificat et la chaîne d'autorité, enregistrez, puis lancez Test Connectivity. `client_key` n'est pas concerné.
 
 ## Ordre d'installation
 

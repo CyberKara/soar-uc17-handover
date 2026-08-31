@@ -1,6 +1,6 @@
 # UC17 — EfficientIP DDI Enrichment — Air-Gapped Handover Package
 
-Generated 2026-08-29 19:54 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
+Generated 2026-08-31 10:18 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
 
 This package is self-contained — everything needed to deploy this use case by hand
 in an environment with no network access back to this repo or to `soar8`.
@@ -11,12 +11,19 @@ in an environment with no network access back to this repo or to `soar8`.
 
 | Path | What |
 |------|------|
-| `connectors/` | Connector app package(s): efficientip_ddi.tgz, efficientip_ddi_classic-v1.0.1.tgz |
+| `connectors/` | Connector app package(s): efficientip_ddi.tgz, efficientip_ddi_classic-v1.0.2.tgz |
 | `connectors/source/` | Same connector(s), extracted — for reading, not for import |
 | `playbooks/*.tgz` (PBs) | efficientip_ddi_enrich, efficientip_ddi_action_test, efficientip_ddi_classic_action_test |
 | `playbooks/source/` | Same CFs/playbooks, extracted — for reading, not for import |
 | `assets/*.json` | Asset config templates (credentials redacted — see below) |
 | `docs/` | Implementation plan doc, for full design context |
+
+## [!] Upgrading over an earlier install — read this first
+
+These apply only if this app is already installed on the target from a
+previous package. On a completely fresh target, skip to Install order.
+
+- **If you already have an asset for this app from an earlier package (v1.0.3 or older), you must re-enter `client_cert` and `client_ca` after installing.** Those two fields changed from a secret type to a plain text field in v1.0.4, because a certificate and a CA bundle are not secrets — only the private key is. SOAR does not convert what it already stored: the old encrypted value stays in place and is then used as if it were the certificate text. The app installs cleanly and the asset still looks filled in, but every action fails. The error names TLS or authentication, which is misleading — nothing is wrong with your credentials. Open the asset, paste the certificate and the CA bundle in again, save, and run Test Connectivity. `client_key` is unaffected.
 
 ## Install order
 

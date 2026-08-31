@@ -1,35 +1,33 @@
 # False positives: PEM header/footer MARKER STRINGS, not key material.
 #
-# Both connectors implement a _normalize_pem() helper that reflows a pasted
+# The connector implements a _normalize_pem() helper that reflows a pasted
 # cert/key block to strict 64-column PEM. To do that it has to know the
-# header/footer delimiters, so it carries a literal list of them
-# (PEM_BLOCK_TYPES in the SDK app, block_types in the classic connector):
-#
-#     ("-----BEGIN CERTIFICATE-----", "-----END CERTIFICATE-----"),
-#     ("-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----"),
-#     ...
-#
+# header/footer delimiters, so it carries a literal list of them (block_types).
 # gitleaks' private-key rule is a literal string match with no code-semantics
 # awareness, so it fires on the delimiters themselves. No actual key bytes are
-# present anywhere in this package: verified 2026-08-27 by reading both
-# surrounding functions, and by scanning the whole export for base64 runs
-# longer than 60 chars (zero hits outside the bundled wheels).
+# present anywhere in this package: verified by reading the surrounding function
+# (it is a tuple list of delimiter constants) and by scanning the whole export
+# for base64 runs longer than 60 chars (zero hits).
 #
 # Same pattern as cyberark_ccp's _normalize_pem() in the UC1 handover.
 #
-# NOTE: these fingerprints are line-pinned, and they HAVE drifted every time a
-# connector changed: the classic connector's markers moved 402 -> 490-492
-# (v1.0.6) -> 582-584 (v1.0.1) -> 570-572 (v1.0.2, after _apply_client_limit and
-# its three call sites were removed in the WHERE/limit revert). The SDK app's
-# have held at 128-130 throughout. Re-check both whenever either connector
-# changes, or the gate will miss a real finding or fail the commit.
+# NOTE: these fingerprints are line-pinned AND path-pinned, and they have drifted
+# on every connector change: 402 -> 490-492 (v1.0.6) -> 582-584 (v1.0.1) ->
+# 570-572 (v1.0.2, after _apply_client_limit and its call sites were removed) ->
+# 564-566 (2026-08-31, below). Re-check on every export, or the gate will miss a
+# real finding or fail the commit.
 #
-# Re-verified 2026-08-31 for this export: the private-key rule fires on the three
-# BEGIN *PRIVATE KEY* delimiter lines in each file (the BEGIN CERTIFICATE line
-# above them does not trip it, which is why only three lines per file are pinned).
-connectors/source/efficientip_ddi_classic/efficientip_ddi_classic_connector.py:private-key:570
-connectors/source/efficientip_ddi_classic/efficientip_ddi_classic_connector.py:private-key:571
-connectors/source/efficientip_ddi_classic/efficientip_ddi_classic_connector.py:private-key:572
-connectors/source/efficientip_ddi/src/app.py:private-key:128
-connectors/source/efficientip_ddi/src/app.py:private-key:129
-connectors/source/efficientip_ddi/src/app.py:private-key:130
+# 2026-08-31 — repinned for the SDK removal, and this time the PATHS moved too,
+# not just the line numbers:
+#   * The SDK app was deleted, so its three connectors/source/efficientip_ddi/
+#     src/app.py:128-130 fingerprints are gone entirely — they pointed at a file
+#     that no longer exists in this package.
+#   * The classic connector was renamed into the efficientip_ddi name, so
+#     connectors/source/efficientip_ddi_classic/efficientip_ddi_classic_connector.py
+#     became connectors/source/efficientip_ddi/efficientip_ddi_connector.py.
+# Both old paths were verified MISSING before this rewrite. Three fingerprints
+# remain, one per BEGIN-private-key delimiter line; the BEGIN-certificate line
+# above them does not trip the rule, which is why only three lines are pinned.
+connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:564
+connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:565
+connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:566

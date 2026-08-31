@@ -17,13 +17,99 @@
 > user). **Built + deployed + live-verified 2026-08-25 (later still)** — see
 > "Build + live-verify (2026-08-25)" below.
 
+## [!] One connector, classic style — the SDK app was deleted (2026-08-31)
+
+**User decision, taken after testing both connectors on the real airgapped
+appliance.** This use case shipped two deliberately parallel connectors from
+2026-08-26: `efficientip_ddi` (SOAR SDK) and `efficientip_ddi_classic` (classic
+`BaseConnector` twin), carried across the air gap together so their behaviour
+could be compared against the real SOLIDserver/APIM. That comparison is now
+closed, in the classic app's favour.
+
+**What the user found.** In the connector's GUI **edit/view mode**, running any
+action from the left-hand panel fails for the SDK app — every action, every time.
+The classic app's actions in that same panel *partially* work. The decision
+followed directly: an app whose actions never run from that panel is worse than
+one whose actions sometimes do.
+
+**What that failure actually is.** That panel is the **App Debugger**
+(`/rest/debug_action`), and SOAR 8.5 never registers action handlers for
+SDK-based apps there — it answers "Action X not found" regardless of app
+correctness or version. It is a **platform limitation, not a defect in the SDK
+connector**, and it does not affect the real dispatch paths (asset Test
+Connectivity, playbooks, `/rest/action_run`), which is why every verification
+run in the dated sections below passed. See
+`[[project-soar85-app-debugger-sdk-action-not-found]]`, where this was already
+recorded on 2026-08-26 — as a debugging caveat, without anyone drawing the
+conclusion that it makes an SDK app the wrong choice for an airgapped target.
+
+**Why it decides the matter anyway.** On the airgapped appliance the operator has
+the web UI and nothing else: no `curl`, no REST tooling, no playbook harness
+against a mock. The App Debugger panel is their only hands-on way to run a single
+action and read its result. A connector style that disables it removes the only
+diagnostic loop available on the machine that matters. That is an operational
+requirement the SDK app cannot meet on SOAR 8.5, independent of code quality.
+
+### What changed
+
+| | Before | After |
+|---|---|---|
+| Connectors | `efficientip_ddi` (SDK) + `efficientip_ddi_classic` (classic) | `efficientip_ddi` (classic) |
+| Repo | `soar-connectors/connectors/efficientip_ddi/` (SDK) + `…_classic/` | `soar-connectors/connectors/efficientip_ddi/` — the classic app, renamed |
+| App `appid` | `b847c7d1-…` (SDK) / `daa10f0c-…` (classic) | `33986f6c-2005-4c3a-aa8b-d7a83caa76d0` (fresh) |
+| App display name | `efficientip_ddi` / `EfficientIP DDI (Classic)` | `EfficientIP DDI` |
+| `app_version` | 1.0.4 (SDK) / 1.0.2 (classic) | **1.0.0** — reset with the identity |
+| Diagnostic playbooks | `efficientip_ddi_action_test` (SDK) + `…_classic_action_test` | `efficientip_ddi_action_test` — the classic one, renamed |
+| Asset | `efficientip_ddi mock` (28) + `efficientip_ddi_classic mock` (29) | `efficientip_ddi mock` |
+
+- The SDK connector was **deleted from the repo**, not parked — source,
+  `pyproject.toml`, `uv.lock`, `release_notes/`, its bundled wheel tree and its
+  README are gone. Git history keeps them; nothing else does.
+- The classic connector **took over the deleted app's name and role** and was
+  given a **fresh `appid`** so the airgapped SOAR treats the package as a new app
+  rather than reconciling it against stale GUI state, exactly as on 2026-08-29.
+- The classic README was rebuilt from the deleted SDK app's, which was where the
+  field-name provenance lived — `docs/dev-rules.md` and
+  `efficientip_ddi_consts.py` both point at it.
+- **FR-01 flipped for this connector.** It was a *temporary* exemption whose
+  removal condition was "delete the classic app once the SDK one is confirmed
+  working on the real appliance". That condition resolved the other way, so the
+  exemption is now **permanent** and the SDK app is the one that was deleted.
+  FR-01's own text now carries the operational caveat, so the next connector
+  destined for the air gap gets to weigh it before a style is chosen.
+
+### Not decided here
+
+FR-01 itself still stands: **new connectors are SDK by default.** This is one
+recorded exemption, driven by one target's operating constraints — not a
+reversal of the 2026-07-18 decision. Whether the App Debugger limitation should
+change the default for *every* airgapped-bound connector is a separate call, and
+the user has not been asked it.
+
+### Still open, unchanged by this
+
+The real-appliance items the SDK/classic split was originally meant to help
+settle are all still open, and now rest on the classic app alone: the
+analogy-based field names on `ip_alias_list` and `get_ip_pool` (`raw_json`
+covers them meanwhile), the deferred `list subnets` **range** filters, and the
+unexplained `list subnets` 401 — three causes have been asserted for that 401 and
+none survived, so do not adopt a fourth without evidence.
+
+---
+
 ## Context
 
 Analyst-driven IP/DNS lookup enrichment against EfficientIP SOLIDserver (DDI:
-DNS/DHCP/IPAM), reached through an APIM gateway. The connector (`efficientip_ddi`,
-SOAR SDK, app id 204 on soar8) was built and installed first, per explicit user
-request — this doc covers the playbook side that calls it, the second half of the
-same `/kara-do-uc-create` session.
+DNS/DHCP/IPAM), reached through an APIM gateway. The connector was built and
+installed first, per explicit user request — this doc covers the playbook side
+that calls it, the second half of the same `/kara-do-uc-create` session.
+
+> **Reading the dated sections below.** They are a historical log. Everything
+> before 2026-08-31 was written while this UC had **two** connectors, an SDK app
+> and a classic twin, and quotes both by version and app id. Only the classic one
+> survives — see the section above for what it is now called and how it is
+> versioned. Treat "the SDK connector", "the classic twin", every `app_version`
+> and every app/playbook id below as a record of that day, not current state.
 
 **No real SOLIDserver/APIM instance exists.** The connector's only backend is
 `soar8/migration/mock-backend/mock_efficientip_ddi.py` (:8447), now deployed as

@@ -1,6 +1,6 @@
 # UC17 — EfficientIP DDI Enrichment — Paquet de transfert (déploiement air-gapped)
 
-Généré le 2026-08-31 10:18 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
+Généré le 2026-08-31 13:45 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
 
 Ce paquet est autonome — tout ce qu'il faut pour déployer ce cas d'usage manuellement
 dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
@@ -11,9 +11,9 @@ dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
 
 | Chemin | Contenu |
 |--------|---------|
-| `connectors/` | Paquet(s) applicatif(s) connecteur : efficientip_ddi.tgz, efficientip_ddi_classic-v1.0.2.tgz |
+| `connectors/` | Paquet(s) applicatif(s) connecteur : efficientip_ddi-v1.0.0.tgz |
 | `connectors/source/` | Même(s) connecteur(s), extrait(s) — pour lecture, pas pour import |
-| `playbooks/*.tgz` (PB) | efficientip_ddi_enrich, efficientip_ddi_action_test, efficientip_ddi_classic_action_test |
+| `playbooks/*.tgz` (PB) | efficientip_ddi_enrich, efficientip_ddi_action_test |
 | `playbooks/source/` | Mêmes CF/playbooks, extraits — pour lecture, pas pour import |
 | `assets/*.json` | Modèles de configuration d'assets (identifiants masqués — voir ci-dessous) |
 | `docs/` | Document de plan d'implémentation, pour le contexte de conception complet |
@@ -24,7 +24,7 @@ Ne concerne que le cas où cette application est déjà installée sur la cible
 depuis un paquet précédent. Sur une cible vierge, passez à l'ordre
 d'installation.
 
-- **Si vous avez déjà un actif (asset) pour cette application issu d'un paquet antérieur (v1.0.3 ou plus ancien), vous devez ressaisir `client_cert` et `client_ca` après l'installation.** Ces deux champs sont passés d'un type secret à un champ texte simple en v1.0.4, car un certificat et une chaîne d'autorité de certification ne sont pas des secrets — seule la clé privée en est un. SOAR ne convertit pas ce qui était déjà enregistré : l'ancienne valeur chiffrée reste en place puis est utilisée comme si elle était le texte du certificat. L'application s'installe correctement et l'actif semble toujours rempli, mais toutes les actions échouent. L'erreur mentionne TLS ou l'authentification, ce qui est trompeur — vos identifiants ne sont pas en cause. Ouvrez l'actif, recollez le certificat et la chaîne d'autorité, enregistrez, puis lancez Test Connectivity. `client_key` n'est pas concerné.
+- **Ce paquet possède une nouvelle identité d'application — ne l'installez pas par-dessus l'ancienne.** Jusqu'au 2026-08-31, ce cas d'usage livrait deux applications : `efficientip_ddi` (basée sur le SDK) et `EfficientIP DDI (Classic)`. L'application SDK est retirée, car ses actions ne peuvent pas être exécutées depuis la page d'édition/consultation du connecteur dans l'interface web de SOAR — une limite de la plateforme, non de l'application. L'application classique est désormais la seule, et elle reprend le nom `efficientip_ddi` sous un nouvel identifiant interne. SOAR l'installe donc comme une application entièrement nouvelle, sans rien mettre à jour. Après l'installation : supprimez LES DEUX anciennes applications ainsi que leurs actifs (assets) via l'interface web (Apps > l'application > Delete — impossible via l'API), puis créez un nouvel actif pour la nouvelle application à partir du modèle fourni dans ce paquet. Ressaisissez tous les identifiants à la main ; les champs secrets ne sont pas transmis dans le modèle.
 
 ## Ordre d'installation
 

@@ -146,11 +146,11 @@
                             "description": "Exercise 'test connectivity' against the connector's mock asset.",
                             "customNameId": 0
                         },
-                        "connector": "efficientip_ddi",
+                        "connector": "EfficientIP DDI",
                         "actionType": "test",
                         "functionId": 1,
                         "parameters": {},
-                        "connectorId": "b847c7d1-ee21-4af8-a92c-a91f5eb4b00d",
+                        "connectorId": "33986f6c-2005-4c3a-aa8b-d7a83caa76d0",
                         "functionName": "run_test_connectivity",
                         "connectorConfigs": [
                             "efficientip_ddi mock"
@@ -202,13 +202,13 @@
                             "description": "Exercise 'get ip address' against a known-good seed IP.",
                             "customNameId": 0
                         },
-                        "connector": "efficientip_ddi",
+                        "connector": "EfficientIP DDI",
                         "actionType": "investigate",
                         "functionId": 3,
                         "parameters": {
                             "address": "10.20.30.40"
                         },
-                        "connectorId": "b847c7d1-ee21-4af8-a92c-a91f5eb4b00d",
+                        "connectorId": "33986f6c-2005-4c3a-aa8b-d7a83caa76d0",
                         "functionName": "run_get_ip_address",
                         "connectorConfigs": [
                             "efficientip_ddi mock"
@@ -240,14 +240,14 @@
                             "description": "Exercise 'list aliases', chained off run_get_ip_address's own ip_id output.",
                             "customNameId": 0
                         },
-                        "connector": "efficientip_ddi",
+                        "connector": "EfficientIP DDI",
                         "actionType": "investigate",
                         "functionId": 4,
                         "parameters": {
                             "ip_id": "run_get_ip_address:action_result.data.*.ip_id",
                             "limit": "10"
                         },
-                        "connectorId": "b847c7d1-ee21-4af8-a92c-a91f5eb4b00d",
+                        "connectorId": "33986f6c-2005-4c3a-aa8b-d7a83caa76d0",
                         "functionName": "run_list_aliases",
                         "connectorConfigs": [
                             "efficientip_ddi mock"
@@ -308,13 +308,13 @@
                             "description": "Exercise 'list subnets' against a known-good seed subnet name.",
                             "customNameId": 0
                         },
-                        "connector": "efficientip_ddi",
+                        "connector": "EfficientIP DDI",
                         "actionType": "investigate",
                         "functionId": 6,
                         "parameters": {
                             "subnet_name": "CORP_LAN-USERS"
                         },
-                        "connectorId": "b847c7d1-ee21-4af8-a92c-a91f5eb4b00d",
+                        "connectorId": "33986f6c-2005-4c3a-aa8b-d7a83caa76d0",
                         "functionName": "run_list_subnets",
                         "connectorConfigs": [
                             "efficientip_ddi mock"
@@ -366,13 +366,13 @@
                             "description": "Exercise 'get ip pool' against a known-good seed pool name.",
                             "customNameId": 0
                         },
-                        "connector": "efficientip_ddi",
+                        "connector": "EfficientIP DDI",
                         "actionType": "investigate",
                         "functionId": 8,
                         "parameters": {
                             "name": "finance-dhcp-pool"
                         },
-                        "connectorId": "b847c7d1-ee21-4af8-a92c-a91f5eb4b00d",
+                        "connectorId": "33986f6c-2005-4c3a-aa8b-d7a83caa76d0",
                         "functionName": "run_get_ip_pool",
                         "connectorConfigs": [
                             "efficientip_ddi mock"
@@ -426,7 +426,7 @@
         "schema": "5.0.5",
         "version": "8.5.0.100"
     },
-    "create_time": "2026-08-29T19:52:57.457149Z",
+    "create_time": "2026-08-31T13:37:31.058842Z",
     "draft_mode": false,
     "labels": [
         "events"

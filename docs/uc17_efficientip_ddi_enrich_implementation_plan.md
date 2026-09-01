@@ -30,6 +30,93 @@ The API returns exactly four codes:
 | `401` | unauthorized | the **only** auth-layer code |
 | `403` | **bad request** (gateway) | malformed/invalid request — **not** "forbidden" |
 
+**Resolved 2026-09-01 (latest): `host_addr` is the dotted column — the hex round
+trip is gone.** The analyst's "look this IP up by its dotted address" need is
+answered by a sibling-column pair on `ip_address_list`:
+
+| Column | Form | Used by |
+|---|---|---|
+| `host_addr` | dotted (`10.10.10.10`) | **this connector, since v1.0.5** |
+| `ip_addr` | zero-padded hex (`0a0a0a0a`) | nothing here any more |
+
+`get ip address` now builds `WHERE=host_addr='<dotted ip>'` and `_ip_to_hex()` is
+replaced by `_validate_ip()`, which keeps the validation that mattered (reject
+hostnames, CIDR ranges, typos before they reach the clause) and normalises IPv6
+to its compressed form. Live-verified on soar8: `WHERE=host_addr%3D%2710.20.30.40%27`
+observed on the wire, all 5 actions PASS, playbook end-to-end unchanged.
+
+This retires the earlier reasoning in this section that treated the hex path as
+the answer. That reasoning was not wrong about `ip_addr` — the `204` did prove it
+a real column — it was just the harder of two available routes, and the mock
+could not have revealed the easier one: its `ip_address_list` seed carried no
+`host_addr` field at all until this change. **Both mock copies now seed and
+filter it.** That is the same blind spot that masked three field-name bugs
+before, hit for a fourth time.
+
+**[!] If the deferred range filters are ever built, they must use the HEX
+columns.** `WHERE` is SQL, so `<=`/`>=` on a dotted string compares
+lexicographically: `"9.0.0.1" > "10.0.0.1"` is true as a string and wrong as an
+address. Zero-padded hex sorts identically to numeric order, which is very
+likely why both column families exist. Equality is safe in either form;
+containment is not. This applies directly to the `subnet_start_hostaddr` /
+`subnet_end_hostaddr` approach that was considered for IP-to-subnet
+containment — those are the dotted columns, and using them for a range would
+silently return wrong subnets at octet boundaries.
+
+**Refined again 2026-09-01 (later still): the quoting rule is SQL typing, the
+`=` encoding is irrelevant, and a `204` is a column-validity signal.** Four
+probes now separate every variable that was previously confounded:
+
+| # | Query | `=` | Quotes | Type | Result |
+|---|---|---|---|---|---|
+| A | `WHERE=ip_addr=<hex>` | raw | none | string | **400** `errno 50028` |
+| B | `WHERE=ip_addr%3D%27<hex>%27` | encoded | yes | string | **204** |
+| C | `WHERE=ip_id%3D1697182` | encoded | none | integer | **records** |
+| D | `WHERE=ip_id=1697182` | raw | none | integer | **records** |
+
+**C vs D** isolates the encoding: identical but for `%3D` vs `=`, identical
+result — so percent-encoding the `=` makes no difference. **A vs D** isolates the
+rest: both raw `=` and unquoted, differing only in the value's type — the string
+fails, the integer works. Together these retire the caveat recorded earlier
+today, that probes A and B differed in two ways and could not separate quoting
+from encoding. They now can, and the answer is **quoting, entirely**.
+
+So the clause types values the way SQL does: string values need quotes, integers
+do not, and the `=` never needs encoding. The earlier `400` was an unquoted
+*string* (a hex `ip_addr`), not a missing-quotes rule in general. Every column
+currently exposed is string-typed, so `_bounded_query()` quoting unconditionally
+is correct today, and letting `requests` handle URL encoding remains fine.
+
+This also answers the analyst's "how do I search by dotted IP?" question, which
+looked open only because of a wrong assumption:
+
+- **The capability already ships.** `get ip address` takes a dotted IPv4 or IPv6
+  and converts it to hex internally (`_ip_to_hex`) before building
+  `WHERE=ip_addr='<hex>'`. The analyst never types hex: `10.10.10.10` becomes
+  `0a0a0a0a`, `2001:db8::1` becomes `20010db8000000000000000000000001`.
+- **`ip_addr` is already proven to be a real filterable column.** The 2026-09-01
+  quoted probe returned **204**, not 400/403 — meaning the clause *parsed* and
+  matched nothing. A bad column errors; it does not 204. So the hex path is
+  syntactically confirmed and only the test *value* failed to match.
+- **Do not read the filterable columns off the response body.** Already disproven
+  on `ip_block_subnet_list` (`name` in the response, `subnet_name` in the filter).
+  `hostaddr` being absent from an `ip_address_list` response is not evidence that
+  it cannot be filtered on.
+
+**Self-validating probe to close this** (uses only the appliance's own data, no
+guessing): take the record already retrieved via `WHERE=ip_id=1697182`, read its
+`ip_addr` value out of that response, then run
+`?limit=25&WHERE=ip_addr='<that exact hex>'`. Returning the same record confirms
+the dotted-IP path end to end. Worth running once for an IPv4 record and once for
+an IPv6 one, since **hex encoding is vendor-confirmed for IPv4 only** and the
+IPv6 form is still an analogy.
+
+Optional ergonomic probe, if a dotted filter would suit the analyst better than
+hex: `?limit=25&WHERE=hostaddr='10.10.10.10'`. Plausible by analogy with
+`start_hostaddr`/`end_hostaddr` on `ip_block_subnet_list`, unconfirmed here, and
+**the mock cannot validate it** — its `ip_address_list` seed carries no
+`hostaddr` field at all.
+
 **Corrected 2026-09-01 (later), by real-appliance probe.** The vendor-stated list
 had four codes and did not include `400`; the appliance returns one. Two probes
 against `ip_address_list`:

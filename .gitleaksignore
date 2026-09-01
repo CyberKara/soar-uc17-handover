@@ -31,11 +31,12 @@
 # 2026-09-01 - repinned for connector v1.0.1 (GUI-visible request/response
 # diagnostics). Path unchanged; the new helper block pushed the delimiters
 # down: 564-566 -> 758-760. Verified by grep before repinning.
-# 2026-09-01 (later) - repinned for v1.0.4 (401 retry, retry policy helpers,
-# 400/403 bad-request handling, vendor-parity headers). Path unchanged;
-# 758-760 -> 901-903 -> 910-912. Verified by grep before repinning. These fingerprints are line-pinned and drift on
+# 2026-09-01 (later) - repinned for v1.0.5 (401 retry, retry policy helpers,
+# 400/403 handling, vendor-parity headers, host_addr filter). Path unchanged;
+# 758-760 -> 901-903 -> 910-912 -> 919-921. Verified by grep before repinning.
+# These fingerprints are line-pinned and drift on
 # EVERY connector change, so repin as a standard step of a refresh, not only
 # when a commit is blocked.
-connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:910
-connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:911
-connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:912
+connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:919
+connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:920
+connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:921

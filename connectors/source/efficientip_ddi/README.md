@@ -41,9 +41,13 @@ appliance (2026-08-29).
 
 ## Endpoint convention
 
-Flat service names under `/rest/`, `WHERE=<field>='<value>'` filtering, IPv4
-addresses filtered as **hex**, not dotted-decimal — SOLIDserver's real classic
-REST API convention. The user has directly observed `/rest/ip_address_list`,
+Flat service names under `/rest/`, `WHERE=<field>='<value>'` filtering.
+Addresses are filterable **two ways**, as a sibling pair of columns:
+`host_addr` takes the dotted form and `ip_addr` takes zero-padded hex. Both are
+real. This connector uses **`host_addr`** (confirmed on the real appliance
+2026-09-01), so no encoding step is needed on the way in. The hex column still
+matters for anything that has to *range*-compare addresses — see the note under
+`list subnets` filters. The user has directly observed `/rest/ip_address_list`,
 `/rest/ip_alias_list/ip_id/{ip_id}`, `/rest/dns_zone_list`, `/rest/ip_pool_list`
 and `/rest/ip_block_subnet_list` on the real system.
 
@@ -71,7 +75,7 @@ unbounded scan and time out server-side. So a bound always goes on the wire:
 | Action | Type | Parameters | Notes |
 |---|---|---|---|
 | `test connectivity` | test | — | `GET /rest/ip_block_subnet_list?limit=1` |
-| `get ip address` | investigate | `address` (req), `limit` (default 1) | `GET /rest/ip_address_list?WHERE=ip_addr='<hex>'` |
+| `get ip address` | investigate | `address` (req), `limit` (default 1) | `GET /rest/ip_address_list?WHERE=host_addr='<dotted ip>'` |
 | `list subnets` | investigate | exactly one of `subnet_name` / `subnet_id` / `parent_subnet_name` / `site_name`; `limit` (default 1) | `GET /rest/ip_block_subnet_list` |
 | `get ip pool` | investigate | `name` (req), `limit` (default 1) | `GET /rest/ip_pool_list?WHERE=pool_name='<name>'` |
 | `list aliases` | investigate | `ip_id` (req, from `get ip address`), `limit` (default 1) | `GET /rest/ip_alias_list/ip_id/{ip_id}` |
@@ -97,6 +101,13 @@ Full set of filterable columns on `ip_block_subnet_list`:
 | `parent_subnet_name` | parent subnet's name |
 | `parent_site_name` | site/space name (exposed as the `site_name` parameter) |
 | `start_ip_addr` / `end_ip_addr` | hex-encoded address (not exposed) |
+
+> **If range filters are ever built, they must use the hex columns.** `WHERE` is
+> SQL, so `<=`/`>=` on a dotted string compares lexicographically, not
+> numerically: `"9.0.0.1" > "10.0.0.1"` is *true* as a string and wrong as an
+> address. Zero-padded hex sorts identically to numeric order
+> (`"09000001" < "0a000001"`), which is very likely why the hex columns exist at
+> all. Equality is safe either way; containment is not.
 | `start_hostaddr` / `end_hostaddr` | dotted IP (not exposed) |
 
 The caller-facing parameter name is not always the `WHERE` column: `site_name`
@@ -150,8 +161,25 @@ it answers `400`, which is why only the `400` body carries an `errno`. Confirmed
 live on the real appliance 2026-09-01: an unquoted `WHERE` value
 (`ip_addr=<hex>`) returns `400` with `[{"errno": "50028", "sql_error": "7"}]`,
 while the correctly quoted form (`ip_addr='<hex>'`) returns `204` for no match.
-**Values in a `WHERE` clause must be single-quoted**; `_bounded_query()` always
-quotes them.
+**String values in a `WHERE` clause must be single-quoted**; `_bounded_query()`
+always quotes them. The clause is SQL and types values the way SQL does, so an
+**integer** column needs no quotes — `WHERE=ip_id=1697182` was confirmed working
+live on 2026-09-01. Every column currently exposed is string-typed, so quoting is
+right in every present case.
+
+**Percent-encoding the `=` is irrelevant.** The same integer query was confirmed
+working both as `WHERE=ip_id%3D1697182` and as `WHERE=ip_id=1697182`. Combined
+with the unquoted-string `400`, this isolates quoting as the only variable that
+ever mattered here — an earlier reading that suspected the encoding is retired.
+
+> **Do not infer the filterable columns from the response body.** This API has
+> already been shown to differ: on `ip_block_subnet_list` records come back under
+> `name` while the filterable column is `subnet_name`. A column missing from a
+> response is not evidence that you cannot filter on it.
+>
+> Note also what a `204` tells you. It means the clause **parsed** and matched
+> nothing — a bad column or bad syntax returns `400`/`403` instead. So a `204`
+> confirms a column is real; it says nothing about whether your *value* was right.
 
 `403` is the one to watch. Read as standard HTTP it looks like a permissions
 problem and sends an operator hunting credentials and entitlements — the wrong
@@ -297,7 +325,9 @@ also accept `name`.
   three read-only appliance probes written out in the UC17 plan.
 - Whether the APIM proxies `/rest/*` verbatim or under its own prefix (fold it
   into `base_url` if so).
-- **IPv6 filtering** — hex-encoding is only vendor-confirmed for IPv4.
+- **IPv6 filtering** — `host_addr` is confirmed for IPv4 only. The connector
+  normalises IPv6 to its compressed form (`2001:0db8::0001` → `2001:db8::1`);
+  whether the appliance stores that form or the expanded one is unverified.
 - A `list subnets` 401 seen on the real appliance (2026-08-29) is **unexplained**.
   Four causes have now been asserted for it and none survived; do not adopt a
   fifth without evidence. Since 2026-09-01 it is *mitigated* by the 401 retry

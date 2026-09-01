@@ -123,15 +123,16 @@ class EfficientipDdiConnector(BaseConnector):
         self.save_progress("DEBUG GUI: Starting get ip address action")
 
         address = param["address"]
-        hex_addr = self._ip_to_hex(address, action_result)
-        if hex_addr is None:
+        query_addr = self._validate_ip(address, action_result)
+        if query_addr is None:
             return action_result.get_status()
         limit = self._limit_from(param, action_result)
         if limit is None:
             return action_result.get_status()
 
         ret_val, records = self._make_rest_call(
-            "GET", IP_ADDRESS_LIST_PATH, self._bounded_query(limit, "ip_addr='{}'".format(hex_addr)), action_result
+            "GET", IP_ADDRESS_LIST_PATH,
+            self._bounded_query(limit, "host_addr='{}'".format(query_addr)), action_result
         )
         if phantom.is_fail(ret_val):
             return action_result.get_status()
@@ -777,13 +778,21 @@ class EfficientipDdiConnector(BaseConnector):
             "X-DDI-Password": base64.b64encode(ddi_password.encode()).decode(),
         }
 
-    def _ip_to_hex(self, address, action_result):
-        """SOLIDserver's ip_addr filter field takes the address as hex, not
-        dotted-decimal. Returns None (with action_result already failed) for
-        anything that isn't a bare IP -- a hostname, CIDR range or typo would
-        otherwise raise a bare ValueError out of the handler."""
+    def _validate_ip(self, address, action_result):
+        """Validate a caller-supplied address and return its normalised form.
+
+        The dotted address goes on the wire as-is: `host_addr` is the
+        filterable column for it (sibling of the hex-valued `ip_addr`), so no
+        encoding step is needed. Normalising still matters for IPv6, where the
+        same address has many spellings and only one compressed form.
+
+        Returns None (with action_result already failed) for anything that is
+        not a bare IP -- a hostname, CIDR range or typo would otherwise reach
+        the WHERE clause verbatim, or raise a bare ValueError out of the
+        handler.
+        """
         try:
-            return ipaddress.ip_address(address).packed.hex()
+            return str(ipaddress.ip_address(address))
         except ValueError:
             action_result.set_status(
                 phantom.APP_ERROR,

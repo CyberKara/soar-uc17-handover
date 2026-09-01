@@ -34,9 +34,16 @@ DEFAULT_LIMIT = 1  # fallback when the optional "limit" action param is omitted
 # is the wrong half of the stack. Neither code is in RETRYABLE_STATUS -- a
 # malformed request is deterministic and fails identically every time.
 #
-# Known cause of a 400 here: an unquoted value in the WHERE clause. The value
-# must be single-quoted (`ip_addr='<hex>'`); bare `ip_addr=<hex>` reaches SQL
-# and is rejected there. _bounded_query() always quotes.
+# Known cause of a 400 here: an unquoted STRING value in the WHERE clause.
+# The clause is SQL, and it types values the way SQL does:
+#
+#   ip_addr='0a0a0a0a'   string  -> quotes REQUIRED (bare 400s at the SQL layer)
+#   ip_id=1697182        integer -> quotes not needed (confirmed live 2026-09-01)
+#
+# _bounded_query() quotes, which is correct for every column currently exposed
+# -- all of them are string-typed. An integer column added later does not need
+# quoting, though quoting one is generally harmless in SQL (implicit cast) and
+# has not been tested here.
 HTTP_STATUS_UNAUTHORIZED = 401
 # Both mean bad request; see the note above.
 BAD_REQUEST_STATUS = frozenset({400, 403})

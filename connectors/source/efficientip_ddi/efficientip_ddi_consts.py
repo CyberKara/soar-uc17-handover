@@ -1,7 +1,12 @@
 # efficientip_ddi_consts.py
 """Constants for the EfficientIP DDI SOAR Connector."""
 
-DEFAULT_TIMEOUT = 15  # seconds
+# 30s to match the vendor's own reference client (their documented CURLOPT set
+# for ip_block_subnet_list uses timeout 30). Was 15, which is under half what
+# the vendor budgets for these calls: a list call that is merely slow -- this
+# backend does full scans when under-bounded -- would have been cut off client
+# side and surfaced as a connection error rather than a slow success.
+DEFAULT_TIMEOUT = 30  # seconds
 DEFAULT_LIMIT = 1  # fallback when the optional "limit" action param is omitted
 
 # ---- Response status semantics ----

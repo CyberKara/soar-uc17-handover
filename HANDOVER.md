@@ -1,6 +1,6 @@
 # UC17 — EfficientIP DDI Enrichment — Air-Gapped Handover Package
 
-Generated 2026-09-01 15:40 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
+Generated 2026-09-01 15:54 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
 
 This package is self-contained — everything needed to deploy this use case by hand
 in an environment with no network access back to this repo or to `soar8`.
@@ -11,7 +11,7 @@ in an environment with no network access back to this repo or to `soar8`.
 
 | Path | What |
 |------|------|
-| `connectors/` | Connector app package(s): efficientip_ddi-v1.0.3.tgz |
+| `connectors/` | Connector app package(s): efficientip_ddi-v1.0.4.tgz |
 | `connectors/source/` | Same connector(s), extracted — for reading, not for import |
 | `playbooks/*.tgz` (PBs) | efficientip_ddi_enrich, efficientip_ddi_action_test |
 | `playbooks/source/` | Same CFs/playbooks, extracted — for reading, not for import |

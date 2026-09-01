@@ -537,6 +537,15 @@ class EfficientipDdiConnector(BaseConnector):
         # data"`. Add Content-Type back per-request if a body is ever
         # actually sent.
         headers["Accept"] = "application/json"
+        # Both from the vendor's own documented CURLOPT set for these services.
+        # no-cache is the interesting one: the vendor's reference client asks for
+        # a fresh answer on every call, which says caching is a live concern
+        # somewhere on this path. That is *consistent with* one of the surviving
+        # explanations for the intermittent 401 (an auth/response cache), but it
+        # is not evidence for it and this header is not a fix -- it is here
+        # because matching the reference client costs nothing and removes one
+        # difference between us and the only implementation known to work.
+        headers["Cache-Control"] = "no-cache"
 
         cert_path = key_path = ca_path = None
         try:

@@ -17,6 +17,76 @@
 > user). **Built + deployed + live-verified 2026-08-25 (later still)** — see
 > "Build + live-verify (2026-08-25)" below.
 
+## [!] Diagnostics build v1.0.1 (2026-09-01) — chasing an intermittent 401
+
+**Connector v1.0.1 adds GUI-visible request/response logging and changes nothing
+else.** No action, parameter, endpoint or auth behaviour is touched. It exists to
+make one open problem legible from the airgapped appliance, where the operator has
+the web UI and nothing else.
+
+### The problem it is built for
+
+The user reports, on the real appliance, from **both** the App Debugger panel and a
+container action run:
+
+- `test connectivity` and `list subnets` fail with **HTTP 401 on one trigger and
+  succeed on the next**, apparently at random. Responses are fast, so nothing is
+  timing out.
+- A run of ten consecutive `limit=2` failures initially looked like the parameter
+  was at fault. **It is not** — `limit=2` was retested later the same day and
+  worked. The failures are bursty in time, and changing a parameter at the start of
+  a bad burst impersonated a parameter-dependent bug.
+
+**The connector cannot be the source of the intermittency.** Its request path holds
+no per-call state: `_auth_headers()` recomputes every header from config on each
+call, `self._state` carries only `app_version`, certs are written and deleted per
+call, each call opens a new connection, and there is no retry logic. Identical
+inputs produce identical bytes. So the variable is outside this code, and the log
+exists to find out which.
+
+### What is logged, and what each line is for
+
+Everything goes through `save_progress`, the only channel that reaches an operator
+with no shell — it renders in both the App Debugger panel and the container action
+result. `add_action_result().add_debug_data()` does **not**: it is dropped before
+the result is persisted (verified on soar8 `app_run` 6507), which is why the
+response headers this connector had always collected were never visible to anyone.
+
+| Line | Answers |
+|---|---|
+| `dns: <host> -> <addrs>` | Does the APIM name resolve to more than one node? |
+| `HTTP <s> from peer <ip:port>` | **Which node served this call.** The decisive one: a 401 that follows one address while 200s follow another names the bad node. |
+| `-- N ms to headers, M ms total` | A fast reject, a stalled auth decision and a slow body all look different here. |
+| `client_cert len=… sha256:…` | Was the material identical on a call that worked and one that did not? Rules the asset in or out without re-entering anything. |
+| `sent: <method> <url>` | The URL **as requests encoded it**, read back off the PreparedRequest — not our intent. |
+| `sent headers` | Includes what requests added itself (Host, User-Agent, `Connection: keep-alive`). |
+| `response headers` | `WWW-Authenticate`, quota/rate-limit counters, gateway request-ids. |
+| `received body` | The gateway in its own words — logged on success **and** failure, because an intermittent fault is only readable by diffing a good call against a bad one. |
+| `parse: <branch>` | Which of the four response branches was taken — an empty 204 and an empty JSON array both end as "no records found". |
+
+Secrets never print: auth headers, cookies and PEM material are replaced by a
+length and a SHA-256 prefix, asserted by a test.
+
+### What to send back from the appliance
+
+The `peer` line for one failing call and one succeeding call, taken close together.
+That single pair distinguishes a load-balanced node with inconsistent trust from a
+quota policy from a session-cache expiry — the three shapes this could still be.
+
+### Leads already dead — do not re-open
+
+- **Percent-encoding of the `WHERE` clause.** `%3D`/`%27` are accepted: the
+  appliance returned 200 for `ip_address_list?WHERE=ip_addr%3D%27<hex>%27` on
+  2026-08-29 (see "Ruling out the encoding" below).
+- **The `limit` parameter**, per the retest above.
+- Four causes have now been asserted for a UC17 401 and none has survived. **Do not
+  adopt a fifth without evidence from the log above.**
+
+Verified before shipping: `uc17_verify.sh` green (all 5 actions PASS through real
+playbook dispatch), and the peer-address lookup works on both soar8's
+`requests 2.32.4` and the build host's 2.25.1 — the socket's location is a urllib3
+private detail that moved between versions, so five known layouts are tried in turn.
+
 ## [!] One connector, classic style — the SDK app was deleted (2026-08-31)
 
 **User decision, taken after testing both connectors on the real airgapped

@@ -28,6 +28,9 @@
 # Both old paths were verified MISSING before this rewrite. Three fingerprints
 # remain, one per BEGIN-private-key delimiter line; the BEGIN-certificate line
 # above them does not trip the rule, which is why only three lines are pinned.
-connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:564
-connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:565
-connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:566
+# 2026-09-01 - repinned for connector v1.0.1 (GUI-visible request/response
+# diagnostics). Path unchanged; the new helper block pushed the delimiters
+# down: 564-566 -> 758-760. Verified by grep before repinning.
+connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:758
+connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:759
+connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:760

@@ -17,11 +17,14 @@ Auth (3 layers, every request):
 """
 
 import base64
+import hashlib
 import ipaddress
 import json
 import os
+import socket
 import tempfile
-from urllib.parse import parse_qsl
+import time
+from urllib.parse import parse_qsl, urlsplit
 
 import requests
 
@@ -289,6 +292,162 @@ class EfficientipDdiConnector(BaseConnector):
 
     # ---- REST Call Wrapper ----
 
+    # ---- Diagnostics ----
+    #
+    # Everything below writes through save_progress, which is the only channel
+    # that reaches an operator with no shell: it renders both in the App
+    # Debugger panel and in a container action result. add_debug_data() does
+    # NOT -- it is dropped before the action result is persisted (verified on
+    # soar8 app_run 6507, where result_data carries no debug_data key), so the
+    # response headers it collects have never been visible to anyone.
+
+    # Values never printed. Request side: the three auth headers. Response
+    # side: anything that hands back a session.
+    _SENSITIVE_HEADERS = frozenset({
+        "authorization", "x-ddi-username", "x-ddi-password",
+        "set-cookie", "cookie", "proxy-authorization", "www-authenticate-token",
+    })
+
+    # Bodies are logged whole up to this, then truncated. Generous enough for a
+    # gateway error page or a few IPAM records, short enough not to bury the
+    # rest of the trace in the GUI panel.
+    _BODY_LOG_LIMIT = 2000
+
+    def _dbg(self, message):
+        self.save_progress("DEBUG GUI: {}".format(message))
+
+    def _body_preview(self, text):
+        """Render a body for the log, flagging truncation explicitly.
+
+        Silent truncation is worse than none: it invites reading a cut-off
+        JSON document as a malformed one.
+        """
+        if not text:
+            return "(empty)"
+        if len(text) <= self._BODY_LOG_LIMIT:
+            return text
+        return "{} ... (truncated, {} chars total)".format(text[:self._BODY_LOG_LIMIT], len(text))
+
+    def _fingerprint(self, material):
+        """Identify PEM material without printing it.
+
+        Enough to answer "is the cert the connector used this time the same one
+        it used last time" across runs, which no log line could otherwise show
+        without leaking the material itself.
+        """
+        if not material:
+            return "absent"
+        digest = hashlib.sha256(material.encode()).hexdigest()[:16]
+        return "len={} sha256:{}".format(len(material), digest)
+
+    def _format_headers(self, headers):
+        """Render headers with sensitive values replaced by their length."""
+        rendered = []
+        for name, value in dict(headers or {}).items():
+            if name.lower() in self._SENSITIVE_HEADERS:
+                rendered.append("{}=<redacted len={}>".format(name, len(value or "")))
+            else:
+                rendered.append("{}={}".format(name, value))
+        return "; ".join(rendered) if rendered else "(none)"
+
+    def _resolve_peers(self, url):
+        """List every address the APIM hostname resolves to.
+
+        A name answering on several addresses is the first thing worth ruling
+        in or out when calls fail intermittently with identical inputs: one
+        node out of N behaving differently looks exactly like that from here.
+        """
+        try:
+            parts = urlsplit(url)
+            host = parts.hostname
+            if not host:
+                return "unparsable url"
+            port = parts.port or (443 if parts.scheme == "https" else 80)
+            infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
+            addresses = sorted({info[4][0] for info in infos})
+            return "{} -> {}".format(host, ", ".join(addresses))
+        except Exception as e:  # never let diagnostics fail an action
+            return "resolution failed: {}".format(e)
+
+    def _peer_address(self, response):
+        """The address that actually served this call.
+
+        Tells us WHICH of the resolved addresses answered, which is the
+        difference between suspecting a bad node and naming it.
+
+        Only readable while the connection is still held. requests releases it
+        the instant the body is read, so the caller issues the request with
+        stream=True and calls this BEFORE touching .content.
+
+        Where the socket hangs off the response is a urllib3 private detail
+        that has moved between versions -- on urllib3 1.26 `_connection.sock`
+        is already None while `_fp.fp.raw._sock` is live -- and this connector
+        is built on one host and run on another. So try the known layouts in
+        order and take the first that answers. All of it is best-effort:
+        diagnostics must never fail an action.
+        """
+        candidate_paths = (
+            "_connection.sock",
+            "_fp.fp.raw._sock",
+            "_original_response.fp.raw._sock",
+            "_fp.fp._sock",
+            "_sock",
+        )
+        for path in candidate_paths:
+            try:
+                target = response.raw
+                for attribute in path.split("."):
+                    target = getattr(target, attribute)
+                peer = target.getpeername()
+                return "{}:{}".format(peer[0], peer[1])
+            except Exception:
+                continue
+        return "unavailable"
+
+    def _dbg_exchange(self, response, peer, headers_ms, elapsed_ms):
+        """Log the whole exchange, best-effort.
+
+        Wrapped like every other helper here: a diagnostic must never be the
+        reason an action fails. This one reads several attributes that a real
+        requests.Response always has but a stand-in may not (`request`,
+        `history`), so unguarded it turns a working action into an
+        AttributeError.
+        """
+        try:
+            self._dbg("HTTP {} from peer {} -- {:.0f} ms to headers, {:.0f} ms total".format(
+                response.status_code, peer, headers_ms, elapsed_ms,
+            ))
+            # What actually went on the wire, read back off the PreparedRequest
+            # rather than off our own intent: this is the URL after requests
+            # encoded the query string, and the headers after it added its own
+            # (Host, User-Agent, Accept-Encoding, Connection). If the gateway is
+            # rejecting the request's SHAPE, the difference shows up here and
+            # nowhere else.
+            sent = getattr(response, "request", None)
+            if sent is not None:
+                self._dbg("sent: {} {}".format(sent.method, sent.url))
+                self._dbg("sent headers: {}".format(self._format_headers(sent.headers)))
+                if sent.body:
+                    self._dbg("sent body: {}".format(self._body_preview(
+                        sent.body.decode("utf-8", "replace") if isinstance(sent.body, bytes) else str(sent.body),
+                    )))
+
+            history = getattr(response, "history", None)
+            self._dbg("redirects: {}".format(
+                " -> ".join("{} {}".format(r.status_code, r.url) for r in history)
+                if history else "(none)",
+            ))
+            self._dbg("response headers: {}".format(self._format_headers(response.headers)))
+            # Logged on success as well as failure. Comparing the body of a call
+            # that worked against one that did not is the whole point, and on a
+            # gateway that answers non-auth problems with 401 the body is where
+            # it says which problem it meant.
+            self._dbg("received body ({} bytes): {}".format(
+                len(response.content or b""), self._body_preview(response.text),
+            ))
+        except Exception as e:  # never let diagnostics fail an action
+            self._dbg("diagnostics unavailable: {}: {}".format(type(e).__name__, e))
+
     def _make_rest_call(self, method, path, params, action_result):
         """Execute an APIM call with mTLS cert setup + 3-layer auth, cleanup.
 
@@ -309,39 +468,66 @@ class EfficientipDdiConnector(BaseConnector):
 
         cert_path = key_path = ca_path = None
         try:
+            self._dbg("=== request {} {} ===".format(method, url))
+            self._dbg("params: {}".format(params if params else "(none)"))
+            self._dbg("request headers: {}".format(self._format_headers(headers)))
+            self._dbg("dns: {}".format(self._resolve_peers(url)))
+
             cert_path, key_path, ca_path = self._setup_cert_files()
-            self.save_progress("DEBUG GUI: Cert files created")
+            self._dbg("client_cert {}".format(self._fingerprint(config.get("client_cert", ""))))
+            self._dbg("client_key  {}".format(self._fingerprint(config.get("client_key", ""))))
+            self._dbg("client_ca   {}".format(self._fingerprint(config.get("client_ca", ""))))
 
             verify_ssl = config.get("verify_ssl", True)
             verify = ca_path if (verify_ssl and ca_path) else verify_ssl
+            self._dbg("verify_ssl={} verify={} timeout={}s".format(
+                verify_ssl, "ca bundle" if isinstance(verify, str) else verify, DEFAULT_TIMEOUT,
+            ))
 
-            self.save_progress("DEBUG GUI: {} {}".format(method, url))
+            # stream=True defers the body read, which is the only window in
+            # which the peer address is still readable (see _peer_address).
+            # The body is pulled immediately below, so nothing is left open.
+            started = time.monotonic()
             response = requests.request(
                 method, url, headers=headers, params=params,
                 cert=(cert_path, key_path), verify=verify, timeout=DEFAULT_TIMEOUT,
+                stream=True,
             )
-            self.save_progress("DEBUG GUI: HTTP {} received".format(response.status_code))
+            headers_ms = (time.monotonic() - started) * 1000
+            peer = self._peer_address(response)
+            response.content  # noqa: B018 - forces the read, releases the connection
+            elapsed_ms = (time.monotonic() - started) * 1000
+
+            # Logged for every response, not just failures: an intermittent
+            # fault is only legible by comparing a good call against a bad one,
+            # so the good ones have to be on the record too. Splitting the two
+            # timings separates a slow gateway decision (headers) from a slow
+            # body transfer, and both from a fast reject.
+            self._dbg_exchange(response, peer, headers_ms, elapsed_ms)
 
             return self._process_response(response, action_result)
 
         except requests.exceptions.SSLError as e:
+            self._dbg("SSLError ({}): {}".format(type(e).__name__, e))
             return (
                 action_result.set_status(phantom.APP_ERROR, "TLS/mTLS error connecting to APIM: {}".format(e)),
                 None,
             )
         except requests.exceptions.ConnectionError as e:
+            self._dbg("ConnectionError ({}): {}".format(type(e).__name__, e))
             return (
                 action_result.set_status(phantom.APP_ERROR, "Could not reach APIM: {}".format(e)),
                 None,
             )
         except requests.exceptions.RequestException as e:
+            self._dbg("RequestException ({}): {}".format(type(e).__name__, e))
             return (
                 action_result.set_status(phantom.APP_ERROR, "Error connecting to APIM: {}".format(e)),
                 None,
             )
         finally:
             self._cleanup_temp_files(cert_path, key_path, ca_path)
-            self.save_progress("DEBUG GUI: Cert files cleaned up")
+            self._dbg("=== end request ===")
 
     def _process_response(self, response, action_result):
         action_result.add_debug_data({
@@ -352,7 +538,11 @@ class EfficientipDdiConnector(BaseConnector):
 
         content_type = response.headers.get("Content-Type", "")
 
+        # Which of the four branches below a response takes is not obvious from
+        # the outcome -- an empty 204 and a JSON empty array both end as "no
+        # records found" -- so name the branch taken.
         if "json" in content_type:
+            self._dbg("parse: JSON body (content-type {})".format(content_type))
             try:
                 data = response.json()
             except ValueError as e:
@@ -369,6 +559,7 @@ class EfficientipDdiConnector(BaseConnector):
             # isinstance check and surface a confusing "unexpected response
             # shape" error instead of the intended friendly "No X found"
             # message.
+            self._dbg("parse: empty body, treated as zero records")
             data = []
         elif response.ok:
             return (
@@ -381,6 +572,9 @@ class EfficientipDdiConnector(BaseConnector):
                 None,
             )
         else:
+            self._dbg("parse: error response, non-JSON body (content-type {})".format(
+                content_type or "unset",
+            ))
             data = {}
 
         if response.ok:

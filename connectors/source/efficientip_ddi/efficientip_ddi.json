@@ -10,7 +10,7 @@
     "logo_dark": "logo_dark.svg",
     "publisher": "Ted",
     "license": "Copyright (c) 2026",
-    "app_version": "1.0.1",
+    "app_version": "1.0.3",
     "utctime_updated": "2026-08-26T00:00:00.000000Z",
     "package_name": "phantom_efficientip_ddi",
     "main_module": "efficientip_ddi_connector.py",
@@ -79,6 +79,20 @@
             "required": false,
             "default": true,
             "order": 9
+        },
+        "retry_count": {
+            "description": "Total attempts for a request that returns HTTP 401 (1 = no retry)",
+            "data_type": "numeric",
+            "required": false,
+            "default": 3,
+            "order": 10
+        },
+        "retry_backoff": {
+            "description": "Base seconds to wait between 401 retries; the wait grows linearly (1x, 2x, 3x)",
+            "data_type": "numeric",
+            "required": false,
+            "default": 2,
+            "order": 11
         }
     },
     "actions": [

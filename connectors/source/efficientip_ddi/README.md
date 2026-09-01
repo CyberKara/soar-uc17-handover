@@ -117,6 +117,8 @@ the record comes back under `name`. That mapping lives in
 | `client_key` | Yes | password | PEM private key matching `client_cert` |
 | `client_ca` | No | string | PEM CA bundle to verify APIM's server cert; blank uses system CAs |
 | `verify_ssl` | No (default `true`) | boolean | |
+| `retry_count` | No (default `3`) | numeric | Total attempts for a request answered with HTTP 401. `1` disables retrying. Clamped to 1–10. |
+| `retry_backoff` | No (default `2`) | numeric | Base seconds between 401 retries; the wait grows linearly (1x, 2x, 3x). Clamped to 0–30. |
 
 `client_cert` and `client_ca` are deliberately `string`, not `password`: a client
 certificate and a CA certificate are public by definition (NFR-04). Beyond
@@ -129,6 +131,81 @@ corrupts it.
 > cause of the 2026-08-28 `Test Connectivity` 401 on the real appliance — the
 > code was fine, the asset config was not. See
 > `project-soar-efficientip-airgapped-first-run`.
+
+## Response codes
+
+This API returns four codes, and **one does not carry its usual HTTP meaning**:
+
+| Code | Meaning here | Connector behaviour |
+|---|---|---|
+| `200` | Success | Body parsed as JSON |
+| `204` | No content — zero matching records | Treated as an empty result set, not an error. Whether "no records" is an action failure is each action's own call. |
+| `400` | **Bad request**, from the SOLIDserver backend — body carries `errno`/`sql_error` | Never retried; `errno` surfaced in the error message |
+| `401` | Unauthorized — the **only** auth-layer code | **Retried** (see below) |
+| `403` | **Bad request**, from the APIM gateway — *not* "forbidden" | Never retried; the error message says so explicitly |
+
+Bad requests arrive as **either 400 or 403**, most likely because two different
+layers can reject one: the gateway answers `403`, the SOLIDserver backend behind
+it answers `400`, which is why only the `400` body carries an `errno`. Confirmed
+live on the real appliance 2026-09-01: an unquoted `WHERE` value
+(`ip_addr=<hex>`) returns `400` with `[{"errno": "50028", "sql_error": "7"}]`,
+while the correctly quoted form (`ip_addr='<hex>'`) returns `204` for no match.
+**Values in a `WHERE` clause must be single-quoted**; `_bounded_query()` always
+quotes them.
+
+`403` is the one to watch. Read as standard HTTP it looks like a permissions
+problem and sends an operator hunting credentials and entitlements — the wrong
+half of the stack. On this API it means the *request* was wrong: a bad filter
+column, bad `WHERE` syntax, an invalid parameter. The connector's error text
+names that explicitly rather than printing a bare `HTTP 403`, and treats `400`
+identically.
+
+Because both `400` and `403` cover malformed requests, a `401` **cannot** be the
+gateway's way of rejecting a bad query. That is worth remembering when reading
+the open 401 below: query-shaped explanations for it are ruled out by this table
+alone.
+
+### Retry on 401
+
+The real appliance has been observed returning `401` for a request that succeeds,
+unchanged, moments later. The connector holds no per-call state — headers are
+recomputed from config on every call, there is no session, cookie or token, certs
+are written and deleted per call — so identical inputs produce identical bytes.
+That is what makes retrying meaningful here rather than re-asking a question the
+server already answered.
+
+- Applies to **every action, including `test connectivity`**.
+- `401` only. `400` and `403` are deterministic and are never retried.
+- Linear backoff between attempts, not immediate re-fire: rapid repeated auth
+  failures are what trip gateway lockout and quota policies, and if the cause is
+  an auth-cache TTL gap, the wait is the part that helps.
+- **Never silent.** Every attempt is logged with its peer address, and a call
+  that only succeeded on a later attempt reports `Succeeded on attempt N of M` in
+  the action result. The intermittency is still an open investigation, so the
+  retry must not bury the evidence for it.
+
+Retry is a mitigation, not a diagnosis. It is designed so that running it
+produces *better* evidence than not running it: if attempt 1 fails at one peer
+address and attempt 2 succeeds at another, that single pair of log lines
+identifies a load-balanced node with inconsistent trust.
+
+### Reading the diagnostic log
+
+Everything is written through `save_progress`, so it renders in both the App
+Debugger panel and the container action result — the only channel that reaches an
+operator with no shell. Secrets never print: auth headers, cookies and PEM
+material are replaced by a length and a SHA-256 prefix.
+
+| Line | Answers |
+|---|---|
+| `idle: Ns since last successful call` | Separates the three surviving 401 theories: an auth-cache expiry fails after a **gap**, a quota policy fails under a **burst** (the opposite), a bad load-balanced node correlates with neither. |
+| `retry plan: up to N attempt(s) ...` | What this asset is configured to do. |
+| `attempt N/M: HTTP s from peer <ip:port>` | **Which node served this call** — the decisive line when a 401 follows one address while 200s follow another. |
+| `dns: <host> -> <addrs>` | Does the APIM name resolve to more than one node? |
+| `sent:` / `sent headers` | The request as `requests` encoded it, read off the PreparedRequest — not our intent. |
+| `response headers` | `WWW-Authenticate`, quota counters, gateway request-ids, cache markers. |
+| `received body` | Logged on success **and** failure — an intermittent fault is only readable by diffing a good call against a bad one. |
+| `parse: <branch>` | Which response branch was taken; an empty 204 and an empty JSON array both end as "no records". |
 
 ## Building and installing
 
@@ -222,5 +299,10 @@ also accept `name`.
   into `base_url` if so).
 - **IPv6 filtering** — hex-encoding is only vendor-confirmed for IPv4.
 - A `list subnets` 401 seen on the real appliance (2026-08-29) is **unexplained**.
-  Three causes have been asserted for it and none survived; do not adopt a fourth
-  without evidence.
+  Four causes have now been asserted for it and none survived; do not adopt a
+  fifth without evidence. Since 2026-09-01 it is *mitigated* by the 401 retry
+  above and instrumented by the idle-gap line — but mitigated is not explained,
+  and the retry is deliberately noisy so the evidence keeps accumulating.
+  Percent-encoding of the `WHERE` clause and the `limit` parameter are both
+  ruled out, and the `403 = bad request` mapping rules out every remaining
+  query-shaped explanation.

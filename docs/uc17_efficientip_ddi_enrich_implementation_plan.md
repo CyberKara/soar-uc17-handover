@@ -17,6 +17,127 @@
 > user). **Built + deployed + live-verified 2026-08-25 (later still)** — see
 > "Build + live-verify (2026-08-25)" below.
 
+## Retry on 401 + the response-code contract — v1.0.2 (2026-09-01)
+
+**New vendor information, and the first mitigation for the intermittent 401.**
+The API returns exactly four codes:
+
+| Code | Meaning | Notes |
+|---|---|---|
+| `200` | success | |
+| `204` | no content | zero matching records on a list endpoint — not an error |
+| `400` | **bad request** (backend) | body carries `errno`/`sql_error` |
+| `401` | unauthorized | the **only** auth-layer code |
+| `403` | **bad request** (gateway) | malformed/invalid request — **not** "forbidden" |
+
+**Corrected 2026-09-01 (later), by real-appliance probe.** The vendor-stated list
+had four codes and did not include `400`; the appliance returns one. Two probes
+against `ip_address_list`:
+
+| Probe | Result |
+|---|---|
+| `?limit=1&WHERE=ip_addr=<hex>` (value unquoted) | **400**, body `[{"errno":"50028","sql_error":"7"}]` |
+| `?limit=1&WHERE=ip_addr%3D%27<hex>%27` (value quoted) | **204**, empty |
+
+So "bad request" arrives as **either** code. The likeliest reading is two layers
+rejecting it — `403` from the APIM gateway, `400` from the SOLIDserver backend
+behind it, which is why only the `400` body carries an `errno`. The connector
+treats them identically: named as a bad request, never retried, with `errno` and
+`sql_error` pulled out of the list-shaped error body into the message.
+
+The operative variable between the two probes is the **quoting**, not the
+encoding: unquoted, the value reaches SQL and is rejected there (`sql_error`);
+quoted, it parses and returns a clean 204 for no match. Note the probes differ in
+two ways at once — quotes *and* `=` encoding — so they do not separate those on
+their own; encoded `WHERE` was already confirmed working on 2026-08-29, which is
+what leaves quoting as the variable that moved. `_bounded_query()` has always
+quoted, so no action was needed there.
+
+Both probes also carried `WHERE` **and** `limit` and neither 401'd — an
+independent reconfirmation of the shell-artefact revert.
+
+### Why 403 matters more than it looks
+
+`403` does not carry its standard HTTP meaning here. Read as plain HTTP it reads
+as a permissions problem and sends an operator hunting credentials and
+entitlements, which is the wrong half of the stack; on this API it means the
+*request* was wrong — bad filter column, bad `WHERE` syntax, invalid parameter.
+The connector's error text now says so in place of a bare `HTTP 403`, which
+matters most on the airgapped appliance where that message is all the operator
+has.
+
+It also **narrows the open 401 investigation**, at no cost. Since a malformed
+request returns `403`, a `401` cannot be the gateway's way of rejecting a bad
+query — so every query-shaped explanation is ruled out by the contract alone.
+That retroactively explains why the dead theories died: `WHERE` syntax, the
+`limit` parameter and percent-encoding were all query-shaped, and a query fault
+would have surfaced as `403`, never `401`. This is narrowing, not a fifth theory:
+the 401 is auth-layer, which is consistent with the observed intermittency.
+
+### The retry (user decision)
+
+Retrying a 401 is normally an anti-pattern — it re-sends credentials the server
+just rejected. What makes it correct here is the evidence in the section below:
+the connector holds no per-call state, so identical inputs produce identical
+bytes, and those identical bytes get 401 on one trigger and 200 on the next. That
+is a transient gateway fault, not a wrong credential.
+
+- **Every action, `test connectivity` included.** Asked for explicitly. The
+  standing objection was that retrying there hides a genuinely broken asset
+  config — the exact failure mode of 2026-08-28 — but per-attempt logging
+  answers it: a real bad credential fails all attempts and the log shows each
+  401. The only cost is latency on a genuinely broken asset.
+- **`401` only.** `400` and `403` are deterministic; retrying them just
+  multiplies latency before the same failure.
+- **Linear backoff, low cap.** Rapid repeated auth failures are what trip gateway
+  lockout and quota policies. Of the three surviving causes, retry helps two and
+  actively harms the third (quota) — backoff and a cap of 3 keep that bounded.
+  Operator-tunable per asset via `retry_count` / `retry_backoff`, because the
+  right value depends on which cause it turns out to be.
+- **Never silent.** Every attempt logs its peer address; a late success reports
+  `Succeeded on attempt N of M` in the action result.
+
+The retry is a mitigation, not a diagnosis, and is built so that running it
+yields *better* evidence than not running it: attempt 1 failing at one peer and
+attempt 2 succeeding at another identifies the load-balancer theory in a single
+pair of log lines.
+
+### `idle:` — the line that discriminates
+
+A last-success timestamp now persists in `self._state`, and every call logs the
+gap since it. Each surviving theory predicts a different relationship to that
+number, so one failing/succeeding pair separates all three:
+
+| Theory | Correlates with |
+|---|---|
+| Auth-cache expiry | a **gap** since the last successful call |
+| Quota / rate-limit | **burst rate** — the opposite pattern |
+| Load-balanced node with inconsistent trust | neither; shows up in the peer address |
+
+Note there is **no client-side session to configure**: the connector opens a
+fresh connection per call and holds no cookie or token, so if an auth cache is
+the cause it lives on the APIM and its TTL cannot be set from here. What the
+asset exposes instead is the retry *backoff*, which is the lever that actually
+helps against a TTL gap.
+
+### Status
+
+Built, installed and verified on soar8 (app **209**, v1.0.3), `uc17_verify.sh`
+green — all 5 actions PASS through real `action_run` dispatch, playbook
+end-to-end unchanged. The three new log lines were confirmed rendering on the
+live dispatch path, and the idle baseline confirmed persisting across action
+runs. 56 unit tests pass (15 new, covering the retry sequences, the `400`/`403`
+no-retry rule, `errno` extraction, `204` handling and config clamping).
+
+**Not proven live: a real 401 escalating to attempt 2.** The mock returns 401
+only for bad credentials, so forcing that on soar8 would mean either editing a
+working asset's credentials or restarting the Ansible-owned mock service. Unit
+tests cover the sequence; the real proof will come from the appliance.
+
+**Handover impact:** the asset template gains two fields (`retry_count`,
+`retry_backoff`). Both are optional with defaults, so an existing asset upgrades
+cleanly and no operator re-entry is required.
+
 ## [!] Diagnostics build v1.0.1 (2026-09-01) — chasing an intermittent 401
 
 **Connector v1.0.1 adds GUI-visible request/response logging and changes nothing
@@ -591,8 +712,9 @@ all bounded):
 
 1. **Does `WHERE` accept `AND`?**
    `GET /rest/ip_block_subnet_list?WHERE=parent_site_name='<site>' AND parent_subnet_name='<parent>'&limit=5`
-   — a 200 with correctly-narrowed rows means composition works; a 400 or
-   ignored second condition means the one-filter rule stays permanent.
+   — a 200 with correctly-narrowed rows means composition works; a **403**
+   (this API's code for a bad request, *not* 400) or an ignored second
+   condition means the one-filter rule stays permanent.
 2. **Does it accept comparison operators?**
    `GET /rest/ip_block_subnet_list?WHERE=start_hostaddr>='10.20.0.0'&limit=5`
    — anything other than a 200 with narrowed rows means ranges are impossible

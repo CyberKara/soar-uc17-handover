@@ -33,13 +33,20 @@ from phantom.action_result import ActionResult
 from phantom.base_connector import BaseConnector
 
 from efficientip_ddi_consts import (
+    BAD_REQUEST_STATUS,
     DEFAULT_LIMIT,
+    DEFAULT_RETRY_BACKOFF,
+    DEFAULT_RETRY_COUNT,
     DEFAULT_TIMEOUT,
+    HTTP_STATUS_UNAUTHORIZED,
     IP_ADDRESS_LIST_PATH,
     IP_ALIAS_LIST_PATH,
     IP_BLOCK_SUBNET_LIST_PATH,
     IP_POOL_LIST_PATH,
     LIST_SUBNETS_FILTERS,
+    MAX_RETRY_BACKOFF,
+    MAX_RETRY_COUNT,
+    RETRYABLE_STATUS,
 )
 
 
@@ -404,7 +411,7 @@ class EfficientipDdiConnector(BaseConnector):
                 continue
         return "unavailable"
 
-    def _dbg_exchange(self, response, peer, headers_ms, elapsed_ms):
+    def _dbg_exchange(self, response, peer, headers_ms, elapsed_ms, attempt=1, attempts=1):
         """Log the whole exchange, best-effort.
 
         Wrapped like every other helper here: a diagnostic must never be the
@@ -414,8 +421,8 @@ class EfficientipDdiConnector(BaseConnector):
         AttributeError.
         """
         try:
-            self._dbg("HTTP {} from peer {} -- {:.0f} ms to headers, {:.0f} ms total".format(
-                response.status_code, peer, headers_ms, elapsed_ms,
+            self._dbg("attempt {}/{}: HTTP {} from peer {} -- {:.0f} ms to headers, {:.0f} ms total".format(
+                attempt, attempts, response.status_code, peer, headers_ms, elapsed_ms,
             ))
             # What actually went on the wire, read back off the PreparedRequest
             # rather than off our own intent: this is the URL after requests
@@ -448,8 +455,73 @@ class EfficientipDdiConnector(BaseConnector):
         except Exception as e:  # never let diagnostics fail an action
             self._dbg("diagnostics unavailable: {}: {}".format(type(e).__name__, e))
 
+    # ---- Retry policy ----
+
+    def _bounded_config_number(self, key, default, minimum, maximum):
+        """Read a numeric asset-config value, clamped, never raising.
+
+        A SOAR numeric field still arrives as whatever the operator typed, and
+        a bad retry setting must not be the thing that takes an enrichment
+        action down -- fall back to the default and say so.
+        """
+        raw = self.get_config().get(key)
+        if raw is None or raw == "":
+            return default
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            self._dbg("{}={!r} is not a number, using default {}".format(key, raw, default))
+            return default
+        if value < minimum or value > maximum:
+            clamped = min(max(value, minimum), maximum)
+            self._dbg("{}={} out of range [{}, {}], clamped to {}".format(
+                key, value, minimum, maximum, clamped,
+            ))
+            return clamped
+        return value
+
+    def _retry_plan(self):
+        """(total attempts, base backoff seconds) for this asset."""
+        attempts = int(self._bounded_config_number(
+            "retry_count", DEFAULT_RETRY_COUNT, 1, MAX_RETRY_COUNT,
+        ))
+        backoff = self._bounded_config_number(
+            "retry_backoff", DEFAULT_RETRY_BACKOFF, 0, MAX_RETRY_BACKOFF,
+        )
+        return attempts, backoff
+
+    def _log_idle_gap(self):
+        """Log how long since the last call that succeeded.
+
+        This is the one number that separates the three surviving explanations
+        for the intermittent 401, because each predicts a different
+        relationship to it: an auth-cache expiry fails after a GAP, a quota
+        policy fails under a BURST (the opposite), and a load-balanced node
+        with inconsistent trust correlates with neither -- it shows up in the
+        peer address instead. Recorded on every call so a failing one can be
+        compared against a succeeding one.
+        """
+        last = self._state.get("last_success_epoch") if isinstance(self._state, dict) else None
+        if not last:
+            self._dbg("idle: no previous successful call on record")
+            return
+        try:
+            self._dbg("idle: {:.1f}s since last successful call".format(time.time() - float(last)))
+        except (TypeError, ValueError):
+            self._dbg("idle: unreadable last-success timestamp {!r}".format(last))
+
+    def _record_success(self):
+        if isinstance(self._state, dict):
+            self._state["last_success_epoch"] = time.time()
+
     def _make_rest_call(self, method, path, params, action_result):
         """Execute an APIM call with mTLS cert setup + 3-layer auth, cleanup.
+
+        Retries an HTTP 401 up to the asset's configured attempt count. Every
+        attempt is logged individually, and a call that only succeeded on a
+        later attempt says so in the action result rather than passing silently
+        -- the intermittency is an open investigation, so the retry has to stay
+        visible instead of papering over the evidence.
 
         Returns:
             tuple: (status, response_data) - RetVal pattern
@@ -484,28 +556,64 @@ class EfficientipDdiConnector(BaseConnector):
                 verify_ssl, "ca bundle" if isinstance(verify, str) else verify, DEFAULT_TIMEOUT,
             ))
 
-            # stream=True defers the body read, which is the only window in
-            # which the peer address is still readable (see _peer_address).
-            # The body is pulled immediately below, so nothing is left open.
-            started = time.monotonic()
-            response = requests.request(
-                method, url, headers=headers, params=params,
-                cert=(cert_path, key_path), verify=verify, timeout=DEFAULT_TIMEOUT,
-                stream=True,
-            )
-            headers_ms = (time.monotonic() - started) * 1000
-            peer = self._peer_address(response)
-            response.content  # noqa: B018 - forces the read, releases the connection
-            elapsed_ms = (time.monotonic() - started) * 1000
+            attempts, backoff = self._retry_plan()
+            self._log_idle_gap()
+            self._dbg("retry plan: up to {} attempt(s), {}s linear backoff, retrying {}".format(
+                attempts, backoff, sorted(RETRYABLE_STATUS),
+            ))
 
-            # Logged for every response, not just failures: an intermittent
-            # fault is only legible by comparing a good call against a bad one,
-            # so the good ones have to be on the record too. Splitting the two
-            # timings separates a slow gateway decision (headers) from a slow
-            # body transfer, and both from a fast reject.
-            self._dbg_exchange(response, peer, headers_ms, elapsed_ms)
+            for attempt in range(1, attempts + 1):
+                # stream=True defers the body read, which is the only window in
+                # which the peer address is still readable (see _peer_address).
+                # The body is pulled immediately below, so nothing is left open.
+                started = time.monotonic()
+                response = requests.request(
+                    method, url, headers=headers, params=params,
+                    cert=(cert_path, key_path), verify=verify, timeout=DEFAULT_TIMEOUT,
+                    stream=True,
+                )
+                headers_ms = (time.monotonic() - started) * 1000
+                peer = self._peer_address(response)
+                response.content  # noqa: B018 - forces the read, releases the connection
+                elapsed_ms = (time.monotonic() - started) * 1000
 
-            return self._process_response(response, action_result)
+                # Logged for every response, not just failures: an intermittent
+                # fault is only legible by comparing a good call against a bad
+                # one, so the good ones have to be on the record too. Splitting
+                # the two timings separates a slow gateway decision (headers)
+                # from a slow body transfer, and both from a fast reject.
+                self._dbg_exchange(response, peer, headers_ms, elapsed_ms, attempt, attempts)
+
+                if response.status_code not in RETRYABLE_STATUS:
+                    break
+
+                if attempt == attempts:
+                    self._dbg("HTTP {} on attempt {} of {} -- attempts exhausted".format(
+                        response.status_code, attempt, attempts,
+                    ))
+                    break
+
+                delay = backoff * attempt
+                self._dbg("HTTP {} on attempt {} of {} -- retrying in {:.1f}s".format(
+                    response.status_code, attempt, attempts, delay,
+                ))
+                if delay:
+                    time.sleep(delay)
+
+            if response.ok:
+                self._record_success()
+                if attempt > 1:
+                    # Surfaced through save_progress, not only the debug log:
+                    # a result that reads as a clean success while the gateway
+                    # is rejecting a third of its calls hides the very symptom
+                    # under investigation.
+                    self.save_progress(
+                        "Succeeded on attempt {} of {} (earlier attempt(s) returned HTTP {})".format(
+                            attempt, attempts, HTTP_STATUS_UNAUTHORIZED,
+                        )
+                    )
+
+            return self._process_response(response, action_result, attempts)
 
         except requests.exceptions.SSLError as e:
             self._dbg("SSLError ({}): {}".format(type(e).__name__, e))
@@ -529,7 +637,7 @@ class EfficientipDdiConnector(BaseConnector):
             self._cleanup_temp_files(cert_path, key_path, ca_path)
             self._dbg("=== end request ===")
 
-    def _process_response(self, response, action_result):
+    def _process_response(self, response, action_result, attempts=1):
         action_result.add_debug_data({
             "r_status_code": response.status_code,
             "r_text": response.text,
@@ -580,13 +688,48 @@ class EfficientipDdiConnector(BaseConnector):
         if response.ok:
             return (phantom.APP_SUCCESS, data)
 
-        detail = data.get("message") if isinstance(data, dict) and data else response.text
-        return (
-            action_result.set_status(
-                phantom.APP_ERROR, "EfficientIP/APIM returned HTTP {}: {}".format(response.status_code, detail)
-            ),
-            None,
-        )
+        detail = self._error_detail(data, response)
+
+        # This API uses only four codes and 403 is not the standard one, so the
+        # error text names the meaning rather than leaving the operator to read
+        # it as plain HTTP. Getting this wrong costs real time on an airgapped
+        # appliance, where the message in the GUI is all the operator has.
+        if response.status_code in BAD_REQUEST_STATUS:
+            message = (
+                "EfficientIP/APIM returned HTTP {}, which on this API means BAD REQUEST "
+                "-- 403 is not a permissions problem and 400 comes from the SOLIDserver "
+                "backend. Check the request itself (filter column names, WHERE syntax "
+                "-- values must be single-quoted -- and limit) before checking "
+                "credentials: {}".format(response.status_code, detail)
+            )
+        elif response.status_code == HTTP_STATUS_UNAUTHORIZED:
+            message = (
+                "EfficientIP/APIM returned HTTP 401 (unauthorized) on all {} attempt(s): "
+                "{}".format(attempts, detail)
+            )
+        else:
+            message = "EfficientIP/APIM returned HTTP {}: {}".format(response.status_code, detail)
+
+        return (action_result.set_status(phantom.APP_ERROR, message), None)
+
+    def _error_detail(self, data, response):
+        """Best available explanation of a failure, for the operator.
+
+        The gateway answers with {"message": ...}, but the SOLIDserver backend
+        answers a bad WHERE with a LIST of dicts carrying its own codes
+        ([{"errno": "50028", "sql_error": "7"}]) and no message at all. Those
+        codes are the only lead available on an airgapped appliance, so pull
+        them out rather than letting the whole body fall through as raw text.
+        """
+        if isinstance(data, dict) and data:
+            return data.get("message") or response.text
+        if isinstance(data, list) and data and isinstance(data[0], dict):
+            fields = ", ".join(
+                "{}={}".format(k, v) for k, v in data[0].items() if v not in (None, "")
+            )
+            if fields:
+                return "SOLIDserver error ({})".format(fields)
+        return response.text
 
     def _ensure_list(self, data, action_result):
         """_make_rest_call() is assumed to return a bare JSON array for list

@@ -4,6 +4,59 @@
 DEFAULT_TIMEOUT = 15  # seconds
 DEFAULT_LIMIT = 1  # fallback when the optional "limit" action param is omitted
 
+# ---- Response status semantics ----
+#
+# Vendor-stated codes: 200 success, 204 no content, 401 unauthorized,
+# 403 bad request. Observed on the real appliance 2026-09-01: a malformed
+# WHERE also returns **400** with a SOLIDserver SQL-layer body
+# ([{"errno": "50028", "sql_error": "7"}]).
+#
+# So "bad request" arrives as either code, and the likeliest reading is that
+# they are two different layers rejecting it -- 403 from the APIM gateway,
+# 400 from the SOLIDserver backend behind it, which is why only the 400 body
+# carries an errno. Both are treated identically here: named as a bad request,
+# never retried.
+#
+#   200  success
+#   204  no content -- a list endpoint with zero matching records. Not an
+#        error, and not a 200 with an empty JSON array.
+#   400  BAD REQUEST (backend/SQL layer) -- body carries errno/sql_error.
+#   401  unauthorized -- the ONLY auth-layer code.
+#   403  BAD REQUEST (gateway layer) -- *not* "forbidden".
+#
+# The 403 mapping is the one that misleads: read as standard HTTP it looks
+# like a permissions problem and sends an operator hunting credentials, which
+# is the wrong half of the stack. Neither code is in RETRYABLE_STATUS -- a
+# malformed request is deterministic and fails identically every time.
+#
+# Known cause of a 400 here: an unquoted value in the WHERE clause. The value
+# must be single-quoted (`ip_addr='<hex>'`); bare `ip_addr=<hex>` reaches SQL
+# and is rejected there. _bounded_query() always quotes.
+HTTP_STATUS_UNAUTHORIZED = 401
+# Both mean bad request; see the note above.
+BAD_REQUEST_STATUS = frozenset({400, 403})
+
+# Only 401 is retried, and only because the real appliance has been observed
+# returning it for a request that succeeds unchanged moments later. The
+# connector holds no per-call state (headers are recomputed from config every
+# call, no session, no cookie, no token), so identical inputs produce identical
+# bytes -- which is what makes a retry meaningful here rather than a way of
+# re-asking a question already answered.
+RETRYABLE_STATUS = frozenset({HTTP_STATUS_UNAUTHORIZED})
+
+# Total attempts, including the first. Operator-tunable per asset because the
+# right value depends on the cause, which is still open: a load-balanced node
+# with inconsistent trust wants more attempts, a quota policy wants fewer.
+DEFAULT_RETRY_COUNT = 3
+MAX_RETRY_COUNT = 10
+
+# Base seconds between attempts; the wait grows linearly (1x, 2x, 3x ...).
+# Backoff rather than immediate re-fire because rapid repeated auth failures
+# are what trips gateway lockout and quota policies -- and because if the cause
+# is an auth-cache TTL gap, the wait is the part that actually helps.
+DEFAULT_RETRY_BACKOFF = 2.0
+MAX_RETRY_BACKOFF = 30.0
+
 # Endpoints -- vendor-confirmed real on this org's APIM (see README.md)
 IP_ADDRESS_LIST_PATH = "/rest/ip_address_list"
 IP_BLOCK_SUBNET_LIST_PATH = "/rest/ip_block_subnet_list"

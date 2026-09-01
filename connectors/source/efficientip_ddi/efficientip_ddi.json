@@ -10,7 +10,7 @@
     "logo_dark": "logo_dark.svg",
     "publisher": "Ted",
     "license": "Copyright (c) 2026",
-    "app_version": "1.0.5",
+    "app_version": "1.0.6",
     "utctime_updated": "2026-08-26T00:00:00.000000Z",
     "package_name": "phantom_efficientip_ddi",
     "main_module": "efficientip_ddi_connector.py",
@@ -93,6 +93,13 @@
             "required": false,
             "default": 2,
             "order": 11
+        },
+        "user_agent": {
+            "description": "User-Agent header. Defaults to a curl string, matching the client known to work against this APIM; blank keeps the HTTP library default",
+            "data_type": "string",
+            "required": false,
+            "default": "curl/8.4.0",
+            "order": 12
         }
     },
     "actions": [

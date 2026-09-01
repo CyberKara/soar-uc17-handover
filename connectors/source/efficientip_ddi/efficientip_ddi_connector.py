@@ -412,6 +412,42 @@ class EfficientipDdiConnector(BaseConnector):
                 continue
         return "unavailable"
 
+    def _dbg_ambient_env(self):
+        """Report the ambient settings requests WOULD honour, and we disable.
+
+        This is the difference between this connector and the curl the user
+        runs by hand, and it is invisible from the request itself. With
+        trust_env left on (the library default), requests will:
+
+          - read ~/.netrc and, on a host match, REPLACE the Authorization
+            header we just built with the netrc credentials. curl only does
+            this with -n. A stale netrc entry is a silent 401.
+          - route through HTTPS_PROXY/HTTP_PROXY. A proxy terminates TLS, so
+            the client certificate never reaches the APIM -- also a 401, and
+            an intermittent one if the proxy is itself load-balanced.
+          - override `verify` from REQUESTS_CA_BUNDLE/CURL_CA_BUNDLE.
+
+        We now turn all of that off. Logging what was present says whether it
+        was ever the cause, which matters more than silently fixing it.
+        """
+        try:
+            names = ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy",
+                     "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy",
+                     "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE")
+            present = {n: os.environ[n] for n in names if os.environ.get(n)}
+            self._dbg("ambient env (ignored, trust_env=False): {}".format(present or "(none set)"))
+            netrc_found = [
+                path for path in (
+                    os.path.expanduser("~/.netrc"), os.path.expanduser("~/_netrc"),
+                )
+                if os.path.exists(path)
+            ]
+            self._dbg("netrc (ignored, trust_env=False): {}".format(
+                ", ".join(netrc_found) if netrc_found else "(none present)",
+            ))
+        except Exception as e:
+            self._dbg("ambient env unreadable: {}: {}".format(type(e).__name__, e))
+
     def _dbg_exchange(self, response, peer, headers_ms, elapsed_ms, attempt=1, attempts=1):
         """Log the whole exchange, best-effort.
 
@@ -457,6 +493,18 @@ class EfficientipDdiConnector(BaseConnector):
             self._dbg("diagnostics unavailable: {}: {}".format(type(e).__name__, e))
 
     # ---- Retry policy ----
+
+    def _user_agent(self):
+        """User-Agent to present, blank to keep the library default.
+
+        Defaults to a curl string because curl is the client known to work
+        against this org's APIM, and a gateway keying a policy on User-Agent
+        (bot filters and per-client rate limits routinely do) is one of the few
+        remaining differences between the two. Configurable so this can be
+        tested both ways without a rebuild, and set back to blank once the
+        question is settled either way.
+        """
+        return (self.get_config().get("user_agent") or "").strip()
 
     def _bounded_config_number(self, key, default, minimum, maximum):
         """Read a numeric asset-config value, clamped, never raising.
@@ -549,6 +597,7 @@ class EfficientipDdiConnector(BaseConnector):
         headers["Cache-Control"] = "no-cache"
 
         cert_path = key_path = ca_path = None
+        session = None
         try:
             self._dbg("=== request {} {} ===".format(method, url))
             self._dbg("params: {}".format(params if params else "(none)"))
@@ -562,22 +611,56 @@ class EfficientipDdiConnector(BaseConnector):
 
             verify_ssl = config.get("verify_ssl", True)
             verify = ca_path if (verify_ssl and ca_path) else verify_ssl
+            # With trust_env now off, a REQUESTS_CA_BUNDLE in the environment no
+            # longer applies by itself. It previously did -- but only when no
+            # client_ca was configured, because requests substitutes it solely
+            # when verify is True. That made an optional asset field silently
+            # decide whether the platform's CA bundle or the system trust store
+            # verified the APIM, which is a miserable thing to debug on an
+            # airgapped box. Honour it explicitly as a fallback so no working
+            # asset regresses, and say so in the log.
+            if verify is True:
+                env_bundle = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("CURL_CA_BUNDLE")
+                if env_bundle:
+                    verify = env_bundle
+                    self._dbg("no client_ca set; falling back to CA bundle from environment: {}".format(env_bundle))
             self._dbg("verify_ssl={} verify={} timeout={}s".format(
                 verify_ssl, "ca bundle" if isinstance(verify, str) else verify, DEFAULT_TIMEOUT,
             ))
 
             attempts, backoff = self._retry_plan()
             self._log_idle_gap()
+            self._dbg_ambient_env()
             self._dbg("retry plan: up to {} attempt(s), {}s linear backoff, retrying {}".format(
                 attempts, backoff, sorted(RETRYABLE_STATUS),
             ))
 
+            # An explicit Session, for two reasons that both bite silently.
+            #
+            # 1. requests.request() is `with Session() as s: return s.request(...)`
+            #    -- the session, its adapters and its connection pools are CLOSED
+            #    the moment it returns. Combined with stream=True (which we need,
+            #    because the peer address is only readable before the body is
+            #    read) that meant reading .content off a response whose pool was
+            #    already torn down. Undefined behaviour at best.
+            # 2. trust_env=False. With the library default of True, requests
+            #    silently honours the ambient environment in ways curl does not:
+            #    a matching ~/.netrc entry REPLACES the Authorization header we
+            #    just built, and HTTPS_PROXY reroutes the call through a proxy
+            #    that terminates TLS so the client certificate never reaches the
+            #    APIM. Either one is an HTTP 401 that looks like a credential
+            #    problem, and neither is visible in the request we think we sent.
+            #    Proxies are also emptied explicitly, so a session-level default
+            #    cannot reintroduce one.
+            session = requests.Session()
+            session.trust_env = False
+            session.proxies = {}
+            if self._user_agent():
+                session.headers["User-Agent"] = self._user_agent()
+
             for attempt in range(1, attempts + 1):
-                # stream=True defers the body read, which is the only window in
-                # which the peer address is still readable (see _peer_address).
-                # The body is pulled immediately below, so nothing is left open.
                 started = time.monotonic()
-                response = requests.request(
+                response = session.request(
                     method, url, headers=headers, params=params,
                     cert=(cert_path, key_path), verify=verify, timeout=DEFAULT_TIMEOUT,
                     stream=True,
@@ -644,6 +727,8 @@ class EfficientipDdiConnector(BaseConnector):
                 None,
             )
         finally:
+            if session is not None:
+                session.close()
             self._cleanup_temp_files(cert_path, key_path, ca_path)
             self._dbg("=== end request ===")
 
@@ -865,7 +950,12 @@ class EfficientipDdiConnector(BaseConnector):
         and disproven -- the curl observation behind it was a shell-quoting
         artefact, not appliance behaviour. See the UC17 plan.
         """
-        return {"WHERE": where, "limit": limit} if where else {"limit": limit}
+        # limit FIRST. Every curl confirmed working against the real appliance
+        # puts it first, and this connector was putting it last. Ordering should
+        # not matter to a correct parser -- but "should not matter" is exactly
+        # the kind of assumption that has cost this connector three reverted
+        # theories, and matching the known-good client costs nothing.
+        return {"limit": limit, "WHERE": where} if where else {"limit": limit}
 
     def _select_optional_filter(self, param, filter_map, action_result):
         """Pick at most one supplied filter, returning (where_column, value).

@@ -373,7 +373,19 @@ class EfficientipDdiConnector(BaseConnector):
             port = parts.port or (443 if parts.scheme == "https" else 80)
             infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
             addresses = sorted({info[4][0] for info in infos})
-            return "{} -> {}".format(host, ", ".join(addresses))
+            summary = "{} -> {}".format(host, ", ".join(addresses))
+            if len(addresses) > 1:
+                # Called out rather than merely listed. A 401 that is consistent
+                # across every retry inside one action run, yet comes and goes
+                # between runs, is the signature of ONE bad node behind a name:
+                # the config is identical, so what changes between runs is which
+                # node answered. Compare the "peer" line on a failing run against
+                # a succeeding one -- if they differ, the node is the answer and
+                # retrying the same name will never help.
+                summary += "  [!] {} addresses -- compare the peer line across a failing and a succeeding run".format(
+                    len(addresses),
+                )
+            return summary
         except Exception as e:  # never let diagnostics fail an action
             return "resolution failed: {}".format(e)
 
@@ -411,6 +423,58 @@ class EfficientipDdiConnector(BaseConnector):
             except Exception:
                 continue
         return "unavailable"
+
+    def _dbg_curl_equivalent(self, response):
+        """Print the curl that reproduces this exact request.
+
+        The user's hand-run curl succeeds where this connector 401s. That is
+        the whole problem, and arguing about it from here cannot settle it --
+        running both against the same appliance can. So emit the real request
+        as a runnable curl: same URL and query encoding (read back off the
+        PreparedRequest, not off our intent), same headers, same client cert.
+
+        Credentials are NOT printed. The three auth headers come out as shell
+        variables so the line is runnable once they are exported, without the
+        log ever carrying a secret.
+
+        If that curl succeeds while this connector 401s on the same appliance
+        seconds apart, the fault is in this HTTP client and nowhere else. If it
+        fails the same way, the fault is in what we are sending, which the same
+        line makes visible.
+        """
+        try:
+            sent = getattr(response, "request", None)
+            if sent is None:
+                return
+            config = self.get_config()
+            parts = [
+                # No backslash escapes anywhere in this line: it travels through
+                # a JSON log record, and an escape there truncates the command
+                # at exactly the point the reader needs it whole.
+                "curl -sS -o /dev/null -D -",
+                "--cert <your client_cert>.pem --key <your client_key>.pem",
+            ]
+            if config.get("client_ca"):
+                parts.append("--cacert <your client_ca>.pem")
+            if self._user_agent():
+                parts.append("-A '{}'".format(self._user_agent()))
+            for name in ("Accept", "Cache-Control"):
+                if name in sent.headers:
+                    parts.append("-H '{}: {}'".format(name, sent.headers[name]))
+            parts.extend([
+                '-H "Authorization: Basic $BASIC_B64"',
+                '-H "X-DDI-Username: $DDI_USER_B64"',
+                '-H "X-DDI-Password: $DDI_PASS_B64"',
+                "'{}'".format(sent.url),
+            ])
+            self._dbg("curl equivalent (export the 3 vars first): {}".format(" ".join(parts)))
+            self._dbg(
+                "  BASIC_B64=$(printf %s '<client_id>:<client_secret>' | base64 -w0); "
+                "DDI_USER_B64=$(printf %s '<ddi_username>' | base64 -w0); "
+                "DDI_PASS_B64=$(printf %s '<ddi_password>' | base64 -w0)"
+            )
+        except Exception as e:
+            self._dbg("curl equivalent unavailable: {}: {}".format(type(e).__name__, e))
 
     def _dbg_ambient_env(self):
         """Report the ambient settings requests WOULD honour, and we disable.
@@ -676,6 +740,8 @@ class EfficientipDdiConnector(BaseConnector):
                 # the two timings separates a slow gateway decision (headers)
                 # from a slow body transfer, and both from a fast reject.
                 self._dbg_exchange(response, peer, headers_ms, elapsed_ms, attempt, attempts)
+                if attempt == 1:
+                    self._dbg_curl_equivalent(response)
 
                 if response.status_code not in RETRYABLE_STATUS:
                     break

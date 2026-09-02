@@ -1,6 +1,6 @@
 # UC17 — EfficientIP DDI Enrichment — Air-Gapped Handover Package
 
-Generated 2026-09-01 17:02 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
+Generated 2026-09-02 11:59 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
 
 This package is self-contained — everything needed to deploy this use case by hand
 in an environment with no network access back to this repo or to `soar8`.
@@ -16,6 +16,7 @@ in an environment with no network access back to this repo or to `soar8`.
 | `playbooks/*.tgz` (PBs) | efficientip_ddi_enrich, efficientip_ddi_action_test |
 | `playbooks/source/` | Same CFs/playbooks, extracted — for reading, not for import |
 | `assets/*.json` | Asset config templates (credentials redacted — see below) |
+| `diagnostics/` | Scripts you run on the target to answer questions about it — see below |
 | `docs/` | Implementation plan doc, for full design context |
 
 ## [!] Upgrading over an earlier install — read this first
@@ -64,6 +65,57 @@ implementation plan doc in `docs/` for the artifact fields each playbook expects
 and confirm the run completes and its action results / added artifacts look right in the
 container. Check `playbook.log`/`actiond.log` on the target SOAR host if a run fails or
 an action errors.
+
+## Diagnostics
+
+`diagnostics/` holds scripts meant to be run **on the target**, because the
+questions they answer are about your environment and cannot be answered from
+the environment that built this package.
+
+- **`uc17_client_bisect.py`** — Runs curl and Python against the appliance back to back, varying one thing per row, to locate an HTTP 401 that only one of the two clients sees.
+- **`uc17_airgapped_probe.sh`** — Answers the API-shape questions only the real appliance can answer: real field names, whether a filter is honoured, what 'not found' returns.
+
+All of them are read-only (every call is a GET), they read credentials from
+environment variables, and they print none. Set the variables once and both
+will pick them up:
+
+```bash
+sudo su - phantom
+export DDI_BASE=https://<your apim host>
+export DDI_CLIENT_ID=... DDI_CLIENT_SECRET=...
+export DDI_USER=...      DDI_PASS=...
+export DDI_CERT=/path/client.pem DDI_KEY=/path/client-key.pem
+export DDI_CA=/path/ca.pem     # optional; omit to skip TLS verification
+```
+
+Run `uc17_client_bisect.py` with the SOAR Python, not the system one — a different
+Python has different HTTP and TLS libraries, so a result from the system
+interpreter says nothing about how the connector behaves:
+
+```bash
+/opt/phantom/bin/phenv python3 diagnostics/uc17_client_bisect.py
+```
+
+Optional, for this script only:
+
+- `PROBE_PATH_OK` — a request path known to succeed (default: a bounded subnet list)
+- `PROBE_PATH_BAD` — the path that returns 401, if you have one — runs the same matrix against it
+- `PROBE_REPEATS` — attempts per row (default 3) — raise it if the fault is intermittent
+
+Run `uc17_airgapped_probe.sh`:
+
+```bash
+bash diagnostics/uc17_airgapped_probe.sh
+```
+
+Optional, for this script only:
+
+- `PROBE_SUBNET` — a real subnet name from your IPAM — sections needing one are skipped without it
+- `PROBE_IP` — a real IPv4 address from your IPAM
+- `PROBE_IP_ID` — a real ip_id from your IPAM
+
+Send the output back to whoever maintains this use case. It is safe to share as
+printed — no credential appears in it.
 
 ## What was deliberately NOT exported
 

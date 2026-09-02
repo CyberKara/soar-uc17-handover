@@ -1,6 +1,6 @@
 # UC17 — EfficientIP DDI Enrichment — Paquet de transfert (déploiement air-gapped)
 
-Généré le 2026-09-01 17:02 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
+Généré le 2026-09-02 11:59 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
 
 Ce paquet est autonome — tout ce qu'il faut pour déployer ce cas d'usage manuellement
 dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
@@ -16,6 +16,7 @@ dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
 | `playbooks/*.tgz` (PB) | efficientip_ddi_enrich, efficientip_ddi_action_test |
 | `playbooks/source/` | Mêmes CF/playbooks, extraits — pour lecture, pas pour import |
 | `assets/*.json` | Modèles de configuration d'assets (identifiants masqués — voir ci-dessous) |
+| `diagnostics/` | Scripts à exécuter sur la cible pour l'interroger — voir ci-dessous |
 | `docs/` | Document de plan d'implémentation, pour le contexte de conception complet |
 
 ## [!] Mise à niveau d'une installation existante — à lire en premier
@@ -70,6 +71,58 @@ chaque playbook,
 et vérifiez que l'exécution se termine et que ses résultats d'action / artifacts ajoutés
 sont corrects dans le container. Consultez `playbook.log`/`actiond.log` sur l'hôte SOAR
 cible si une exécution échoue ou si une action renvoie une erreur.
+
+## Diagnostics
+
+`diagnostics/` contient des scripts à exécuter **sur la cible**, car les
+questions auxquelles ils répondent portent sur votre environnement et ne
+peuvent pas être tranchées depuis celui qui a produit ce paquet.
+
+- **`uc17_client_bisect.py`** — Exécute curl et Python contre l'appliance l'un après l'autre, en ne changeant qu'un seul paramètre par ligne, afin de localiser une erreur HTTP 401 que seul l'un des deux clients rencontre.
+- **`uc17_airgapped_probe.sh`** — Répond aux questions sur la forme de l'API que seule l'appliance réelle peut trancher : noms de champs réels, prise en compte d'un filtre, réponse renvoyée en cas d'absence de résultat.
+
+Tous sont en lecture seule (chaque appel est un GET), lisent les identifiants
+depuis des variables d'environnement et n'en affichent aucun. Définissez ces
+variables une fois, les deux scripts les reprendront :
+
+```bash
+sudo su - phantom
+export DDI_BASE=https://<votre hôte apim>
+export DDI_CLIENT_ID=... DDI_CLIENT_SECRET=...
+export DDI_USER=...      DDI_PASS=...
+export DDI_CERT=/chemin/client.pem DDI_KEY=/chemin/client-key.pem
+export DDI_CA=/chemin/ca.pem   # facultatif ; omettre pour ne pas vérifier TLS
+```
+
+Exécutez `uc17_client_bisect.py` avec le Python de SOAR, et non celui du système :
+un autre Python embarque d'autres bibliothèques HTTP et TLS, si bien qu'un
+résultat obtenu avec l'interpréteur système ne dit rien du comportement du
+connecteur :
+
+```bash
+/opt/phantom/bin/phenv python3 diagnostics/uc17_client_bisect.py
+```
+
+Facultatif, pour ce script uniquement :
+
+- `PROBE_PATH_OK` — un chemin de requête connu pour aboutir (défaut : une liste de sous-réseaux bornée)
+- `PROBE_PATH_BAD` — le chemin qui renvoie 401, si vous en avez un — la même matrice lui est appliquée
+- `PROBE_REPEATS` — tentatives par ligne (défaut 3) — augmentez-le si la panne est intermittente
+
+Exécutez `uc17_airgapped_probe.sh` :
+
+```bash
+bash diagnostics/uc17_airgapped_probe.sh
+```
+
+Facultatif, pour ce script uniquement :
+
+- `PROBE_SUBNET` — un nom de sous-réseau réel de votre IPAM — les sections qui en dépendent sont ignorées sans lui
+- `PROBE_IP` — une adresse IPv4 réelle de votre IPAM
+- `PROBE_IP_ID` — un ip_id réel de votre IPAM
+
+Renvoyez la sortie à la personne qui maintient ce cas d'usage. Elle peut être
+transmise telle quelle — aucun identifiant n'y figure.
 
 ## Ce qui n'a volontairement PAS été exporté
 

@@ -1,4 +1,4 @@
-> **Note:** this copy has had 2 reference(s) to the source lab's own
+> **Note:** this copy has had 3 reference(s) to the source lab's own
 > internal addresses replaced with `<lab-address-redacted>`. They named
 > the lab that built this package, never a target system of yours.
 
@@ -16,6 +16,116 @@
 > Design drafted 2026-08-24, approved 2026-08-25 (open questions below resolved by
 > user). **Built + deployed + live-verified 2026-08-25 (later still)** — see
 > "Build + live-verify (2026-08-25)" below.
+
+## Client review — the cert path is cleared, one real defect found (2026-09-01, later)
+
+A full read of the HTTP client (`_make_rest_call` -> `_process_response`) against
+two hypotheses the user raised: that the instrumentation added this same day broke
+the connector, and that the mTLS cert-file creation is failing.
+
+### The cert path works — and a broken one cannot produce a 401
+
+`_normalize_pem()` + `_setup_cert_files()` were driven against
+`ssl.load_cert_chain()`, which is the exact call urllib3 makes for
+`cert=(certfile, keyfile)`:
+
+| Input | Result |
+|---|---|
+| RSA PKCS#8 key + cert | loads |
+| EC key + cert | loads |
+| RSA PKCS#1 (traditional) key | loads |
+| Cert chain, leaf + intermediate | loads, block order preserved |
+| CRLF line endings | loads |
+| Leading/trailing whitespace | loads |
+| **All newlines lost (single-line paste)** | loads |
+| Key also pasted into the cert box | loads |
+
+**The discriminator matters more than the pass list.** When the material *is* bad
+the failure is not a 401: a cert or key field holding ciphertext — the stranded-value
+case from `c9e9963` — raises `SSLError: [SSL] PEM lib`, which the client catches and
+reports as **"TLS/mTLS error connecting to APIM"**. Two empty fields raise
+`ValueError` before a socket is opened.
+
+So, on the appliance: **if the operator is reading `401`, the client cert and key
+loaded and were presented.** A failing cert path reads "TLS/mTLS error" instead. One
+look at the error text eliminates the entire class, with no code change and no
+further probe. This is a fifth cause *tested and excluded*, not a fifth cause
+asserted.
+
+Caveat: run on the build host's Python/OpenSSL with the SOAR runtime stubbed, not
+under soar8's `phenv` Python 3.13. Re-run there before treating it as absolute.
+
+### The instrumentation post-dates the original 401
+
+The real-appliance 401s were observed **2026-08-26 to 2026-08-28**. Every bespoke
+addition — diagnostics `b927e15`, retry `bc67bb8`, no-cache/30s `19ae77d`,
+trust_env/session `33b38c1`, curl equivalent `b8a36de` — landed **2026-09-01**.
+Code from the 1st cannot have caused a 401 from the 26th. It remains fair game as a
+cause of any **new** 401 observed on v1.0.5+.
+
+### [!] Real defect: `user_agent` ships defaulted to `curl/8.4.0`
+
+`efficientip_ddi.json` declares `user_agent` with `"default": "curl/8.4.0"`, so
+every asset created from this app forges a curl User-Agent on every request unless
+the operator clears the field by hand. The connector's own comment says it was meant
+to be *"set back to blank once the question is settled"* — it shipped defaulted
+**on**. A gateway with a UA-keyed bot filter or client policy is exactly the kind of
+thing that answers 401/403, so the field intended to *test* a theory is now
+permanently *asserting* one on the wire. **This is the strongest candidate in the
+added code for a 401 seen now.** Fix is one line: default to `""`.
+
+### Retry amplification
+
+Retrying 401 three times sends three failed authentications per action where the
+appliance previously saw one. On a gateway with a failed-auth threshold that can
+convert a transient 401 into a sustained lockout — making the symptom look more
+persistent than its cause, which is the opposite of what the retry was built for.
+
+### The diagnostics have no precedent in any vendor connector
+
+Checked against the vendored reference corpus — 8 collections, 144 apps in Splunk's
+own `phantom-apps` monorepo, **379 `*_connector.py` modules**, 1606 Python files:
+
+| Pattern | Connector hits | What the hits actually are |
+|---|---|---|
+| `getaddrinfo` per request | **0** | 1 file: vendored `httplib2` transport |
+| `gethostbyname` | 2 | both in `initialize()`, functional `127.` guard |
+| `getpeername` | **0** | vendored `socks.py` *defining* the method |
+| `raw._connection` / `_fp.fp` / `_original_response` | **0** | — |
+| `response.request` read-back | **0** | 1: Akamai `edgegrid` *writing* an auth header |
+| runtime curl synthesis | **0** | 1: a docstring example in `code42_connector.py` |
+| `trust_env = False` | **0** | — |
+| `stream=True` | 23 files | all file downloads; none peek at the socket |
+
+`stream=True` is idiomatic — but every one of those 23 uses it to stream a file to
+disk or the vault via `iter_content`/`copyfileobj`. Here it exists **only** to let
+`_peer_address()` read the socket before the body. Remove that diagnostic and
+`stream=True` goes with it, along with the torn-down-connection-pool hazard the
+session comment defends against: three of the file's oddest constructs fall out
+together.
+
+Not everything unprecedented is wrong. **`trust_env = False` + `proxies = {}` should
+stay** regardless of the count: a matching `~/.netrc` entry silently *replacing* the
+`Authorization` header is real `requests` behaviour and a real 401 source. The
+distinction is no-precedent-but-correct versus no-precedent-and-costly.
+
+### Latent: unbounded DNS on the action path
+
+`_resolve_peers()` calls `socket.getaddrinfo()`, which takes no timeout and cannot be
+bounded from Python, once per `_make_rest_call` *before* the request. soar8's
+`/etc/resolv.conf` lists three nameservers with no `options` line, so glibc defaults
+apply (`timeout:5`, `attempts:2`) — worst case **30s prepended to every action**,
+outside the retry accounting and outside the 30s the code advertises as its budget.
+Currently costs nothing (`soar8.<lab-address-redacted>` resolves in 5.6 ms), so this is latent,
+not live. `_peer_address()` already answers the real question — which node served
+*this* call — from the actual socket; `_resolve_peers()` only answers what the name
+*could* resolve to, and that is a static property better logged once at
+`initialize()`.
+
+### Status
+
+No code changed. The `user_agent` default and the fate of the instrumentation block
+are decisions for the user — logged in `/data/splunk/docs/next-steps.md`.
 
 ## Retry on 401 + the response-code contract — v1.0.2 (2026-09-01)
 

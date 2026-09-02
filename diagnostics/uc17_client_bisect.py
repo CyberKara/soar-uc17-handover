@@ -293,12 +293,21 @@ VARIANTS = [
 ]
 
 
-def run_path(path):
+def run_path(path, peer_index):
+    """Print the readable table, and return one compact row per variant.
+
+    The compact rows exist because the operator of an airgapped appliance may
+    have no way to copy text off it -- they read the screen and retype. Anything
+    they must retype has to be short enough to get right by hand, so the digest
+    trades the table's readability for density and a mistyped character that is
+    obvious rather than plausible.
+    """
     print("\n{}\n  GET {}\n{}".format("=" * 78, path, "=" * 78))
     print("{:<52} {:<14} {:<16} {}".format("variant", "codes", "peer", "ms (median)"))
     print("-" * 100)
 
     notes = []
+    digest = []
     for label, call in VARIANTS:
         codes, peers, times, extra = [], set(), [], {}
         for _ in range(REPEATS):
@@ -316,11 +325,27 @@ def run_path(path):
             label, ",".join(codes), ",".join(sorted(peers)) or "-",
             times[len(times) // 2] if times else 0,
         ))
+
+        # Collapse identical repeats: three 401s are one fact, not three, and
+        # three characters instead of eleven. Repeats that DISAGREE are the
+        # interesting case, so those stay spelled out.
+        row = label[0]
+        unique_codes = sorted(set(codes))
+        code_token = unique_codes[0] if len(unique_codes) == 1 else "/".join(codes)
+        # Peers are numbered, not named. The operator retypes a digit instead of
+        # a dotted quad, and their internal addressing does not need to travel.
+        # Whether peers DIFFER is the signal; which addresses they are is not.
+        peer_token = ""
+        for peer in sorted(peers):
+            peer_index.setdefault(peer, len(peer_index) + 1)
+            peer_token += str(peer_index[peer])
+        digest.append((row, code_token, peer_token or "-", extra.get("message", "")))
         for name, value in sorted(extra.items()):
             notes.append("    {:<48} {}: {}".format("", name, value))
         if extra:
             print("\n".join(notes[-len(extra):]))
     print()
+    return digest
 
 
 def main():
@@ -335,9 +360,10 @@ def main():
     print("verify      : {}".format(CA or "OFF (no DDI_CA set)"))
     print("repeats     : {} per variant".format(REPEATS))
 
-    run_path(PATH_OK)
-    if PATH_BAD:
-        run_path(PATH_BAD)
+    # Shared across both paths so a node keeps the same number throughout.
+    peer_index = {}
+    digest_ok = run_path(PATH_OK, peer_index)
+    digest_bad = run_path(PATH_BAD, peer_index) if PATH_BAD else []
 
     print("""How to read this:
   B flips to 401           -> the gateway gates on User-Agent/Accept-Encoding.
@@ -347,12 +373,56 @@ def main():
   H 401 too                -> below requests: TLS/client-cert as Python presents it.
   Everything 200           -> the fault is SOAR-side, not the client. Compare this
                               script's environment against the connector's.
-  peer column differs      -> you are hitting more than one gateway node; compare
-                              the APIm-Debug-Trans-Id of a 200 against a 401.
+  peer column differs      -> you are hitting more than one gateway node.
 
-Hand the APIm-Debug-Trans-Id of one 401 and one 200 to whoever administers the
-APIM. The policy trace names the rejecting policy outright, which is worth more
-than anything further inferred from out here.""")
+Hand the APIm-Debug-Trans-Id above to whoever administers the APIM. The policy
+trace names the rejecting policy outright. That id does NOT need to leave this
+machine or reach anyone else -- give it to your own APIM administrator.""")
+
+    print_digest(digest_ok, digest_bad, peer_index)
+
+
+def print_digest(digest_ok, digest_bad, peer_index):
+    """The few lines worth retyping by hand off an airgapped console.
+
+    Everything above this is for reading on the screen. This block is for
+    copying with a pen: short tokens, one line per fact, no dotted quads and no
+    opaque ids. It carries the whole result -- which client saw which status on
+    which node -- in about five lines.
+    """
+    under_phenv = "phenv" in sys.executable or "/opt/phantom/" in sys.executable
+    message = ""
+    for _, _, _, msg in digest_ok + digest_bad:
+        if msg:
+            message = msg[:60]
+            break
+
+    print("\n" + "=" * 56)
+    print("TRANSCRIBE THIS  (everything above is for reading only)")
+    print("=" * 56)
+    print("1 env  phenv={} py{} req{} ul{} ssl{}".format(
+        "YES" if under_phenv else "NO-RERUN-WITH-PHENV",
+        sys.version.split()[0],
+        requests.__version__,
+        __import__("urllib3").__version__,
+        ssl.OPENSSL_VERSION.split()[1],
+    ))
+    print("2 ok   {}".format(" ".join(
+        "{}{}".format(row, code) for row, code, _, _ in digest_ok)))
+    if digest_bad:
+        print("3 bad  {}".format(" ".join(
+            "{}{}".format(row, code) for row, code, _, _ in digest_bad)))
+    print("4 peer {}   ({} distinct)".format(
+        " ".join("{}{}".format(row, peers) for row, _, peers, _ in digest_ok),
+        len(peer_index) or "0",
+    ))
+    if message:
+        print("5 msg  {}".format(message))
+    print("=" * 56)
+    print("Five short lines. A peer digit is a node, not an address -- rows")
+    print("sharing a digit were served by the same one. If a row's repeats")
+    print("disagreed it reads like C401/200/401; that is the real answer, not")
+    print("a typo, so copy it as shown.")
 
 
 if __name__ == "__main__":

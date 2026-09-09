@@ -17,6 +17,83 @@
 > user). **Built + deployed + live-verified 2026-08-25 (later still)** — see
 > "Build + live-verify (2026-08-25)" below.
 
+## [!] SOLVED — the 401 was the gateway's backend leg, not this connector (2026-09-02)
+
+**Read this before any other dated section below.** Everything under it that
+treats the intermittent 401 as a connector, credential or header problem is
+superseded. Do not reopen those threads.
+
+### The evidence
+
+`soar-connectors/tools/uc17_client_bisect.py` was run on the real airgapped
+appliance under `phenv` (py3.13.11, requests 2.32.4, urllib3 1.26.19, OpenSSL
+3.5.1) — eight client variants, three repeats each, one bounded URL:
+
+```
+2 ok   A401/401/200 B200 C200 D401/401/200 E401/200/401
+       F200/200/401 G401/200/200 H200
+4 peer A1 B1 C1 D1 E1 F1 G1 H-   (1 distinct)
+5 msg  [1 record(s)]
+```
+
+Row A is **bare curl, the control**. It failed twice in three. Rows C
+(requests at library defaults — the *pre*-1.0.6 shape) and H (stdlib `urllib`,
+no requests at all) each passed 3/3.
+
+A follow-up separated request rate from everything else:
+
+```
+burst  200 401 401 200 200 200 401 200 200 200   (3/10)
+paced  200 200 401 401 200                        (2/5, 30s apart)
+```
+
+Pooled: **13 of 39 calls failed, ~33%, stable across three runs, two clients and
+two request rates.**
+
+Then a captured 401's response headers carried the answer:
+
+```
+X-Backside-Transport: FAIL FAIL
+```
+
+On IBM DataPower / API Connect that header reports the **backend leg**: `OK OK`
+when the gateway reached its backend, `FAIL FAIL` when it did not. So on a
+failing call the APIM accepted the client, attempted the backend, the backend
+leg failed, and the gateway returned 401 on its own initiative.
+
+### What this means
+
+**The 401 was never an authentication verdict.** Every credential-shaped theory
+this plan accumulated — leaked lab identities, the missing `.strip()`, the cert
+path, `Content-Type`, `WHERE`+`limit`, `Vary`/header shape, `trust_env`, rate
+limiting — was reading a gateway-synthesised status as an auth result. Six
+causes were asserted over three weeks; the seventh was measured.
+
+**No connector change fixes this.** The retry loop is the only mitigation
+available on this side, and it is better justified now than when written: if the
+gateway round-robins a backend pool, a retry re-picks a member. At ~33% per
+attempt, `retry_count=3` leaves ~3.6% residual — a tuning decision, not a fix.
+
+**It escalates, it does not get coded around.** Hand the APIM administrator the
+`APIm-Debug-Trans-Id` of a `FAIL FAIL` 401; the assembly trace names the backend
+member and why its leg failed. They are on the same side of the air gap as the
+appliance.
+
+**This finding is platform-independent.** It was established with bare curl on
+the appliance, entirely outside SOAR, so unlike the rest of UC17's open items it
+does **not** need re-pointing at SOAR 8.6.
+
+### Consequence in code (connector v1.0.9)
+
+The diagnostics built for this hunt are now behind an asset toggle,
+`debug_logging`, **off by default** — kept rather than deleted because the fault
+is an infrastructure one an operator may still need to observe. The same release
+fixed the curl emitter, which replayed an allowlist of two headers and so
+dropped `Accept-Encoding` and `Connection`; it now replays every header actually
+on the wire.
+
+See [[project-soar-efficientip-401-client-independent]].
+
 ## Client review — the cert path is cleared, one real defect found (2026-09-01, later)
 
 A full read of the HTTP client (`_make_rest_call` -> `_process_response`) against

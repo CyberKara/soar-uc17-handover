@@ -336,3 +336,13 @@ also accept `name`.
   Percent-encoding of the `WHERE` clause and the `limit` parameter are both
   ruled out, and the `403 = bad request` mapping rules out every remaining
   query-shaped explanation.
+
+## v1.0.10 (2026-09-09) — user_agent default blanked; reconciliation after the 8.6 rebuild
+
+`soar8` was wiped and rebuilt to SOAR 8.6.0.530 on 2026-09-05, which reset the
+live install to whatever the fresh deploy carried and left v1.0.9's decided
+`user_agent` fix (see "Still open" history above — the client bisect on
+2026-09-02 cleared User-Agent as a 401 suspect, making the curl-string default
+plain leftover test scaffolding, not a fix in progress) shipped in the repo but
+never installed. Closed both gaps in the same pass: `user_agent`'s manifest default changed from `"curl/8.4.0"` to `""` (blank keeps the HTTP library's own default; no code-side reference to the old string existed to update). Rebuilt as v1.0.10, installed live on the rebuilt soar8 (app id 196, same appid `33986f6c-…`), and re-verified via `efficientip_ddi_action_test`: 5/5 actions PASS.
+

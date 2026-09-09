@@ -6,13 +6,14 @@
     "client_ca": "<<SET ME \u2014 see HANDOVER.md, re-enter from your vault/CMDB>>",
     "client_id": "<<SET ME \u2014 this was the LAB's own identity (account/client id), not a secret and not portable. Replace with the identity your target system expects; it must match the credential you enter.>>",
     "client_key": "<<SET ME \u2014 see HANDOVER.md, re-enter from your vault/CMDB>>",
-    "user_agent": "curl/8.4.0",
+    "user_agent": "",
     "verify_ssl": false,
     "client_cert": "<<SET ME \u2014 see HANDOVER.md, re-enter from your vault/CMDB>>",
     "retry_count": 3,
     "ddi_password": "<<SET ME \u2014 see HANDOVER.md, re-enter from your vault/CMDB>>",
     "ddi_username": "<<SET ME \u2014 this was the LAB's own identity (account/client id), not a secret and not portable. Replace with the identity your target system expects; it must match the credential you enter.>>",
     "client_secret": "<<SET ME \u2014 see HANDOVER.md, re-enter from your vault/CMDB>>",
+    "debug_logging": false,
     "retry_backoff": 2
   },
   "redacted_fields": [

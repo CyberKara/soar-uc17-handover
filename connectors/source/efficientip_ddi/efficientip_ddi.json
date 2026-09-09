@@ -10,8 +10,8 @@
     "logo_dark": "logo_dark.svg",
     "publisher": "Ted",
     "license": "Copyright (c) 2026",
-    "app_version": "1.0.8",
-    "utctime_updated": "2026-08-26T00:00:00.000000Z",
+    "app_version": "1.0.10",
+    "utctime_updated": "2026-09-09T00:00:00.000000Z",
     "package_name": "phantom_efficientip_ddi",
     "main_module": "efficientip_ddi_connector.py",
     "min_phantom_version": "6.4.1",
@@ -95,11 +95,18 @@
             "order": 11
         },
         "user_agent": {
-            "description": "User-Agent header. Defaults to a curl string, matching the client known to work against this APIM; blank keeps the HTTP library default",
+            "description": "User-Agent header. Blank keeps the HTTP library default. Was a curl-string test knob for a 401 theory that the 2026-09-02 client bisect disproved (no UA correlation with outcome, root cause is an APIM/backend fault) -- shipping it forged on every request by default with no ongoing purpose, fixed to blank",
             "data_type": "string",
             "required": false,
-            "default": "curl/8.4.0",
+            "default": "",
             "order": 12
+        },
+        "debug_logging": {
+            "description": "Log the full HTTP exchange to the action's progress output (diagnostics only, off by default)",
+            "data_type": "boolean",
+            "required": false,
+            "default": false,
+            "order": 13
         }
     },
     "actions": [

@@ -322,6 +322,21 @@ class EfficientipDdiConnector(BaseConnector):
     _BODY_LOG_LIMIT = 2000
 
     def _dbg(self, message):
+        """Emit a diagnostic line, if this asset asked for them.
+
+        This channel was built to chase an intermittent HTTP 401 and it prints
+        the entire exchange -- request, headers, peer, timings, body. That is
+        the right amount of noise while hunting and the wrong amount forever:
+        on a normal enrichment run it buries the action's actual result under
+        forty lines nobody asked for.
+
+        The 401 turned out to be the gateway's backend leg failing, which no
+        connector change can fix, so the operator may still need this on a bad
+        day. Hence a toggle rather than a deletion -- off by default, one
+        checkbox to get it back.
+        """
+        if not self.get_config().get("debug_logging"):
+            return
         self.save_progress("DEBUG GUI: {}".format(message))
 
     def _body_preview(self, text):
@@ -424,6 +439,14 @@ class EfficientipDdiConnector(BaseConnector):
                 continue
         return "unavailable"
 
+    # curl builds these itself from the URL and the request it is given;
+    # replaying ours would either duplicate or fight them.
+    # Lowercased: requests preserves whatever case set the header, so an
+    # exact-case match here would silently stop skipping one day.
+    _CURL_SUPPLIED_HEADERS = frozenset({"host", "content-length"})
+    # Replayed as shell variables further down, never as values.
+    _SECRET_HEADERS = frozenset({"authorization", "x-ddi-username", "x-ddi-password"})
+
     def _dbg_curl_equivalent(self, response):
         """Print the curl that reproduces this exact request.
 
@@ -456,11 +479,19 @@ class EfficientipDdiConnector(BaseConnector):
             ]
             if config.get("client_ca"):
                 parts.append("--cacert <your client_ca>.pem")
-            if self._user_agent():
-                parts.append("-A '{}'".format(self._user_agent()))
-            for name in ("Accept", "Cache-Control"):
-                if name in sent.headers:
-                    parts.append("-H '{}: {}'".format(name, sent.headers[name]))
+            # Every header actually on the wire, read back off the
+            # PreparedRequest -- not an allowlist of the ones we remember
+            # setting. An earlier version replayed only Accept and
+            # Cache-Control, so the emitted command silently dropped
+            # Accept-Encoding and Connection (which requests adds on its own)
+            # and would have "reproduced" the request while differing from it
+            # in exactly the headers this gateway reports Vary on. A tool that
+            # lies is worse than no tool.
+            for name, value in sent.headers.items():
+                lowered = name.lower()
+                if lowered in self._CURL_SUPPLIED_HEADERS or lowered in self._SECRET_HEADERS:
+                    continue
+                parts.append("-H '{}: {}'".format(name, value))
             parts.extend([
                 '-H "Authorization: Basic $BASIC_B64"',
                 '-H "X-DDI-Username: $DDI_USER_B64"',

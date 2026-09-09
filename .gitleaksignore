@@ -38,6 +38,34 @@
 # These fingerprints are line-pinned and drift on
 # EVERY connector change, so repin as a standard step of a refresh, not only
 # when a commit is blocked.
-connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:1075
-connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:1076
-connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:1077
+# 2026-09-09 - repinned for v1.0.10 (user_agent default blanked, no other code
+# change; the line shift 1075-1077 -> 1106 is from v1.0.9's diagnostics/
+# debug_logging addition landing between refreshes). Also: this gitleaks
+# version reports the three-delimiter block as ONE finding (line 1106, the
+# first delimiter) rather than three, unlike the original 2026-09-01 pinning
+# -- verified by grep that all three delimiter lines are still present
+# (1106-1108) and gitleaks only flags the first.
+connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:1106
+
+# False positive: SOAR's own VPE-generated node bookkeeping field, not a
+# credential. Every decision/filter block's condition gets a
+# "comparisonKey": "comparison_key_<uuid-or-0>" identifier from the GUI/VPE
+# engine itself (same family as the documented "conditionKey" field in
+# vpe-block-reference.md) -- gitleaks' generic-api-key rule pattern-matches
+# on "key" + a high-entropy value with no code-semantics awareness, same
+# failure mode as the private-key rule above. Verified: every one of these
+# 7 hits in the exported playbook JSON is this exact field, nothing else on
+# the flagged lines. New in the 2026-09-09 refresh -- this playbook's JSON
+# picked up comparisonKey values from a VPE GUI save sometime after the
+# 2026-09-02 mirror refresh; the values are session-scoped node identifiers,
+# not secrets, and are meaningless outside the playbook graph that generated
+# them. Re-check line numbers on every future export -- also a new category
+# to watch for even if line numbers don't shift, since these regenerate on
+# every VPE save with new UUIDs.
+playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:171
+playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:188
+playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:221
+playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:292
+playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:299
+playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:316
+playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:349

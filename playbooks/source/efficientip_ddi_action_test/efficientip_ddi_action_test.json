@@ -28,13 +28,6 @@
                     "targetPort": "7_in"
                 },
                 {
-                    "id": "port_0_to_port_9",
-                    "sourceNode": "0",
-                    "sourcePort": "0_out",
-                    "targetNode": "9",
-                    "targetPort": "9_in"
-                },
-                {
                     "id": "port_2_to_port_3",
                     "sourceNode": "2",
                     "sourcePort": "2_out",
@@ -49,16 +42,9 @@
                     "targetPort": "1_in"
                 },
                 {
-                    "id": "port_4_to_port_5",
+                    "id": "port_4_to_port_6",
                     "sourceNode": "4",
                     "sourcePort": "4_out",
-                    "targetNode": "5",
-                    "targetPort": "5_in"
-                },
-                {
-                    "id": "port_5_to_port_6",
-                    "sourceNode": "5",
-                    "sourcePort": "5_out",
                     "targetNode": "6",
                     "targetPort": "6_in"
                 },
@@ -80,20 +66,6 @@
                     "id": "port_8_to_port_1",
                     "sourceNode": "8",
                     "sourcePort": "8_out",
-                    "targetNode": "1",
-                    "targetPort": "1_in"
-                },
-                {
-                    "id": "port_9_to_port_10",
-                    "sourceNode": "9",
-                    "sourcePort": "9_out",
-                    "targetNode": "10",
-                    "targetPort": "10_in"
-                },
-                {
-                    "id": "port_10_to_port_1",
-                    "sourceNode": "10",
-                    "sourcePort": "10_out",
                     "targetNode": "1",
                     "targetPort": "1_in"
                 }
@@ -141,7 +113,7 @@
                         "action": "test connectivity",
                         "advanced": {
                             "join": [],
-                            "note": "Smoke-test branch A of 4 -- see docs/usecases/uc17_efficientip_ddi_enrich_implementation_plan.md.",
+                            "note": "Smoke-test branch A of 3 -- see docs/usecases/uc17_efficientip_ddi_enrich_implementation_plan.md.",
                             "customName": "run test connectivity",
                             "description": "Exercise 'test connectivity' against the connector's mock asset.",
                             "customNameId": 0
@@ -197,7 +169,7 @@
                         "action": "get ip address",
                         "advanced": {
                             "join": [],
-                            "note": "Smoke-test branch B of 4. Static test address 10.20.30.40 (mock seed, has an alias) so the chained list_aliases call also has something real to find.",
+                            "note": "Smoke-test branch B of 3. Static test address 10.20.30.40 (mock seed record), so the found path is exercised.",
                             "customName": "run get ip address",
                             "description": "Exercise 'get ip address' against a known-good seed IP.",
                             "customNameId": 0
@@ -225,45 +197,6 @@
                     "type": "action",
                     "errors": {}
                 },
-                "5": {
-                    "x": 340,
-                    "y": 300,
-                    "id": "5",
-                    "data": {
-                        "id": "5",
-                        "type": "action",
-                        "action": "list aliases",
-                        "advanced": {
-                            "join": [],
-                            "note": "Same chaining rule as efficientip_ddi_enrich: ip_id comes from the prior action's output, not a literal.",
-                            "customName": "run list aliases",
-                            "description": "Exercise 'list aliases', chained off run_get_ip_address's own ip_id output.",
-                            "customNameId": 0
-                        },
-                        "connector": "EfficientIP DDI",
-                        "actionType": "investigate",
-                        "functionId": 4,
-                        "parameters": {
-                            "ip_id": "run_get_ip_address:action_result.data.*.ip_id",
-                            "limit": "10"
-                        },
-                        "connectorId": "33986f6c-2005-4c3a-aa8b-d7a83caa76d0",
-                        "functionName": "run_list_aliases",
-                        "connectorConfigs": [
-                            "efficientip_ddi mock"
-                        ],
-                        "connectorVersion": "v1",
-                        "requiredParameters": [
-                            {
-                                "field": "ip_id",
-                                "default": "",
-                                "data_type": "string"
-                            }
-                        ]
-                    },
-                    "type": "action",
-                    "errors": {}
-                },
                 "6": {
                     "x": 340,
                     "y": 450,
@@ -273,25 +206,22 @@
                         "type": "code",
                         "advanced": {
                             "join": [],
-                            "note": "Reads both action_results and writes one combined note.",
-                            "customName": "note ip and alias",
-                            "description": "Write a pass/fail note for both chained actions.",
+                            "note": "Reads run_get_ip_address's own action_result and writes a note.",
+                            "customName": "note get ip address",
+                            "description": "Write a pass/fail note for the get ip address branch.",
                             "customNameId": 0
                         },
                         "functionId": 5,
-                        "functionName": "note_ip_and_alias",
+                        "functionName": "note_get_ip_address",
                         "inputParameters": [
                             "run_get_ip_address:action_result.status",
-                            "run_get_ip_address:action_result.message",
-                            "run_list_aliases:action_result.status",
-                            "run_list_aliases:action_result.message",
-                            "run_list_aliases:action_result.data.*.alias_name"
+                            "run_get_ip_address:action_result.message"
                         ],
                         "outputVariables": []
                     },
                     "type": "code",
                     "errors": {},
-                    "userCode": "    ################################################################################\n\n    ip_result = phantom.collect2(\n        container=container,\n        datapath=[\n            \"run_get_ip_address:action_result.status\",\n            \"run_get_ip_address:action_result.message\",\n        ]\n    )\n    ip_status, ip_message = (ip_result[0][0], ip_result[0][1]) if ip_result else (\"not run\", \"\")\n    ip_mark = \"PASS\" if ip_status == \"success\" else \"FAIL\"\n\n    alias_result = phantom.collect2(\n        container=container,\n        datapath=[\n            \"run_list_aliases:action_result.status\",\n            \"run_list_aliases:action_result.message\",\n            \"run_list_aliases:action_result.data.*.alias_name\",\n        ]\n    )\n    if alias_result:\n        alias_status, alias_message = alias_result[0][0], alias_result[0][1]\n        # one row per alias -- count them rather than reading row 0, which is\n        # what the connector used to (wrongly) return on its own.\n        alias_names = [r[2] for r in alias_result if r and r[2]]\n    else:\n        alias_status, alias_message, alias_names = \"not run\", \"\", []\n    alias_mark = \"PASS\" if alias_status == \"success\" else \"FAIL\"\n\n    phantom.add_note(\n        container=container,\n        note_type=\"general\",\n        title=\"efficientip_ddi action test - get ip address / list aliases - {}/{}\".format(ip_mark, alias_mark),\n        content=(\n            \"**get ip address:** {} -- {}\\n\\n\"\n            \"**list aliases:** {} -- {}\\n\\n\"\n            \"**aliases returned:** {} -- {}\\n\\n\"\n            \"_Expect more than one alias here if the IP has several. A count of 1 \"\n            \"where the backend holds several means the multi-record fix regressed._\"\n        ).format(ip_mark, ip_message, alias_mark, alias_message,\n                 len(alias_names), \", \".join(alias_names) if alias_names else \"(none)\"),\n    )\n\n    ################################################################################\n"
+                    "userCode": "    ################################################################################\n\n    result = phantom.collect2(\n        container=container,\n        datapath=[\n            \"run_get_ip_address:action_result.status\",\n            \"run_get_ip_address:action_result.message\",\n        ]\n    )\n    status, message = (result[0][0], result[0][1]) if result else (\"not run\", \"\")\n    mark = \"PASS\" if status == \"success\" else \"FAIL\"\n\n    phantom.add_note(\n        container=container,\n        note_type=\"general\",\n        title=\"efficientip_ddi action test - get ip address - {}\".format(mark),\n        content=\"**get ip address:** {}\\n\\n{}\".format(mark, message),\n    )\n\n    ################################################################################\n"
                 },
                 "7": {
                     "x": 680,
@@ -303,7 +233,7 @@
                         "action": "list subnets",
                         "advanced": {
                             "join": [],
-                            "note": "Smoke-test branch C of 4. Static test name CORP_LAN-USERS (mock seed; subnet names are labels, not CIDRs).",
+                            "note": "Smoke-test branch C of 3. Static test name CORP_LAN-USERS (mock seed; subnet names are labels, not CIDRs).",
                             "customName": "run list subnets",
                             "description": "Exercise 'list subnets' against a known-good seed subnet name.",
                             "customNameId": 0
@@ -350,74 +280,10 @@
                     "type": "code",
                     "errors": {},
                     "userCode": "    ################################################################################\n\n    result = phantom.collect2(\n        container=container,\n        datapath=[\n            \"run_list_subnets:action_result.status\",\n            \"run_list_subnets:action_result.message\",\n        ]\n    )\n    status, message = (result[0][0], result[0][1]) if result else (\"not run\", \"\")\n    mark = \"PASS\" if status == \"success\" else \"FAIL\"\n\n    phantom.add_note(\n        container=container,\n        note_type=\"general\",\n        title=\"efficientip_ddi action test - list subnets - {}\".format(mark),\n        content=\"**list subnets:** {}\\n\\n{}\".format(mark, message),\n    )\n\n    ################################################################################\n"
-                },
-                "9": {
-                    "x": 1020,
-                    "y": 150,
-                    "id": "9",
-                    "data": {
-                        "id": "9",
-                        "type": "action",
-                        "action": "get ip pool",
-                        "advanced": {
-                            "join": [],
-                            "note": "Smoke-test branch D of 4. Static test name finance-dhcp-pool (mock seed).",
-                            "customName": "run get ip pool",
-                            "description": "Exercise 'get ip pool' against a known-good seed pool name.",
-                            "customNameId": 0
-                        },
-                        "connector": "EfficientIP DDI",
-                        "actionType": "investigate",
-                        "functionId": 8,
-                        "parameters": {
-                            "name": "finance-dhcp-pool"
-                        },
-                        "connectorId": "33986f6c-2005-4c3a-aa8b-d7a83caa76d0",
-                        "functionName": "run_get_ip_pool",
-                        "connectorConfigs": [
-                            "efficientip_ddi mock"
-                        ],
-                        "connectorVersion": "v1",
-                        "requiredParameters": [
-                            {
-                                "field": "name",
-                                "default": "",
-                                "data_type": "string"
-                            }
-                        ]
-                    },
-                    "type": "action",
-                    "errors": {}
-                },
-                "10": {
-                    "x": 1020,
-                    "y": 300,
-                    "id": "10",
-                    "data": {
-                        "id": "10",
-                        "type": "code",
-                        "advanced": {
-                            "join": [],
-                            "note": "Reads run_get_ip_pool's own action_result and writes a note.",
-                            "customName": "note get ip pool",
-                            "description": "Write a pass/fail note for the get ip pool branch.",
-                            "customNameId": 0
-                        },
-                        "functionId": 9,
-                        "functionName": "note_get_ip_pool",
-                        "inputParameters": [
-                            "run_get_ip_pool:action_result.status",
-                            "run_get_ip_pool:action_result.message"
-                        ],
-                        "outputVariables": []
-                    },
-                    "type": "code",
-                    "errors": {},
-                    "userCode": "    ################################################################################\n\n    result = phantom.collect2(\n        container=container,\n        datapath=[\n            \"run_get_ip_pool:action_result.status\",\n            \"run_get_ip_pool:action_result.message\",\n        ]\n    )\n    status, message = (result[0][0], result[0][1]) if result else (\"not run\", \"\")\n    mark = \"PASS\" if status == \"success\" else \"FAIL\"\n\n    phantom.add_note(\n        container=container,\n        note_type=\"general\",\n        title=\"efficientip_ddi action test - get ip pool - {}\".format(mark),\n        content=\"**get ip pool:** {}\\n\\n{}\".format(mark, message),\n    )\n\n    ################################################################################\n"
                 }
             },
             "notes": "",
-            "description": "Diagnostic Data playbook exercising all 5 efficientip_ddi actions (test connectivity, get ip address, list aliases, list subnets, get ip pool) against known-good mock seed values, in 4 independent parallel branches, each writing its own pass/fail note. Built after the SOAR App Debugger view was found to be unreliable for SDK apps (see memory project-soar85-app-debugger-sdk-action-not-found) -- gives a repeatable way to validate the connector through the real action_run dispatch path."
+            "description": "Diagnostic Data playbook exercising all 3 efficientip_ddi actions (test connectivity, get ip address, list subnets) against known-good mock seed values, in 3 independent parallel branches, each writing its own pass/fail note. Built after the SOAR App Debugger view was found to be unreliable for SDK apps (see memory project-soar85-app-debugger-sdk-action-not-found) -- gives a repeatable way to validate the connector through the real action_run dispatch path."
         },
         "input_spec": [],
         "output_spec": [],
@@ -426,7 +292,7 @@
         "schema": "5.0.5",
         "version": "8.5.0.100"
     },
-    "create_time": "2026-09-05T17:15:31.512388Z",
+    "create_time": "2026-09-24T12:42:52.802091Z",
     "draft_mode": false,
     "labels": [
         "events"

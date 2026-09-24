@@ -1,6 +1,6 @@
 # UC17 — EfficientIP DDI Enrichment — Air-Gapped Handover Package
 
-Generated 2026-09-09 23:53 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
+Generated 2026-09-24 12:48 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
 
 This package is self-contained — everything needed to deploy this use case by hand
 in an environment with no network access back to this repo or to `soar8`.
@@ -11,7 +11,7 @@ in an environment with no network access back to this repo or to `soar8`.
 
 | Path | What |
 |------|------|
-| `connectors/` | Connector app package(s): efficientip_ddi-v1.0.10.tgz |
+| `connectors/` | Connector app package(s): efficientip_ddi-v1.0.11.tgz |
 | `connectors/source/` | Same connector(s), extracted — for reading, not for import |
 | `playbooks/*.tgz` (PBs) | efficientip_ddi_enrich, efficientip_ddi_action_test |
 | `playbooks/source/` | Same CFs/playbooks, extracted — for reading, not for import |
@@ -25,6 +25,8 @@ These apply only if this app is already installed on the target from a
 previous package. On a completely fresh target, skip to Install order.
 
 - **Which of these applies depends on what is already installed — check the Apps list first.** Open Apps and search for `EfficientIP`. If you see **exactly one** app (named `efficientip_ddi` / `EfficientIP DDI`), you installed the 2026-08-31 package or later: this one is a **normal in-place upgrade**. Install it over the existing app — same internal identifier — and your existing asset keeps working with every credential intact. **Do not delete anything and do not re-enter any credential.** If instead you see **two** apps (an `efficientip_ddi` and an `EfficientIP DDI (Classic)`), you are still on a package older than 2026-08-31, and the note below applies to you instead.
+
+- **This package removes two connector actions: `get ip pool` and `list aliases`** (connector v1.0.11). The connector now calls only two SOLIDserver services: `ip_address_list` (`get ip address`) and `ip_block_subnet_list` (`list subnets`, `test connectivity`). After upgrading, any playbook that still calls a removed action fails at that step. That includes the `efficientip_ddi_enrich` and `efficientip_ddi_action_test` playbooks from any earlier package, so re-import both from this package so they replace the earlier versions. If you built playbooks of your own on `get ip pool` or `list aliases`, rework them before upgrading. Your asset and its credentials are not affected. The new `efficientip_ddi_enrich` also fixes its summary note: with packages from 2026-08-31 to 2026-09-09, hostname, subnet, space, MAC address and class came back empty. They are filled in now.
 
 - **Only if the Apps list showed TWO apps.** Up to 2026-08-31 this use case shipped two: `efficientip_ddi` (SDK-based) and `EfficientIP DDI (Classic)`. The SDK app has been withdrawn, because its actions cannot be run from the connector's edit/view page in the SOAR web interface — a limitation of the platform, not of the app. The classic app is now the only one, and it has taken the `efficientip_ddi` name under a new internal identifier, so SOAR installs it as a brand-new app rather than upgrading anything. After installing: delete BOTH old apps and their assets through the web interface (Apps > the app > Delete), then create a fresh asset for the new app from the template in this package. Re-enter every credential by hand; secret fields do not carry across in the template.
 
@@ -59,12 +61,11 @@ previous package. On a completely fresh target, skip to Install order.
 
 ## Verification
 
-After importing everything, open (or create) a container carrying the artifact this use
-case reads, then run the playbook against it by hand: Playbooks > Run Playbook. See the
-implementation plan doc in `docs/` for the artifact fields each playbook expects,
-and confirm the run completes and its action results / added artifacts look right in the
-container. Check `playbook.log`/`actiond.log` on the target SOAR host if a run fails or
-an action errors.
+1. **Run `efficientip_ddi_action_test` first.** It takes no input: open any container, then Playbooks > Run Playbook and pick it. It writes three notes, one per connector action (`test connectivity`, `get ip address`, `list subnets`), each marked PASS or FAIL with the action's own message. Its test values (`10.20.30.40`, `CORP_LAN-USERS`) come from the lab mock, so against your IPAM expect `test connectivity` to PASS and the other two to report "not found" unless those values happen to exist. A "not found" still proves the call reached SOLIDserver and back. An HTTP 401, TLS or BAD REQUEST message does not.
+
+2. **Then run `efficientip_ddi_enrich` the same way.** It reads no artifact. Run Playbook asks for its one input, `ip`: give it an IPv4 address that exists in your IPAM. It writes an `EfficientIP DDI Enrichment` note with hostname, subnet, space, MAC address, class and description. For an address that is not in your IPAM it still writes the note, with those fields empty. The run then shows as failed because the lookup action failed. That is expected, not a fault.
+
+If a run fails in a way the notes do not explain, check `playbook.log`/`actiond.log` on the target SOAR host. For an HTTP 401 on any action, see Diagnostics below.
 
 ## Diagnostics
 

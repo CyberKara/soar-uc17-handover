@@ -17,6 +17,119 @@
 > user). **Built + deployed + live-verified 2026-08-25 (later still)** — see
 > "Build + live-verify (2026-08-25)" below.
 
+## Scope cut to two endpoints — connector v1.0.11 (2026-09-24)
+
+**User decision:** the connector keeps two endpoints only.
+
+| Endpoint | Actions |
+|---|---|
+| `/rest/ip_block_subnet_list` | `list subnets`, `test connectivity` |
+| `/rest/ip_address_list` | `get ip address` |
+
+`get ip pool` (`/rest/ip_pool_list`) and `list aliases`
+(`/rest/ip_alias_list/ip_id/{ip_id}`) are **removed** — manifest, handlers,
+constants, tests, README. Do not re-add them without asking. This retires the
+owed real-appliance retest of `alias_name` and the pool identity field.
+
+Consequences:
+
+- **`efficientip_ddi_enrich`** is now `check_input` -> `get_ip_address` ->
+  `format_summary` -> `finalize`. `check_ip_found` and the `list_aliases` join
+  are gone (with no second action there was nothing left to branch to). Output
+  fields `alias_name`/`alias_names`/`alias_count` are dropped from
+  `output_spec`; no parent chains into this playbook, so nothing consumes them.
+- **Datapath fix, found during the cut.** The playbook read
+  `data.*.hostname`/`subnet`/`space`/`mac_address`/`ddi_class`: the curated
+  keys of the SDK app deleted 2026-08-31. The classic app passes records
+  through raw and declares `name`/`subnet_name`/`site_name`/`mac_addr`/
+  `ip_class_name`. Since 2026-08-31 those five note and output fields would
+  have come back empty; only `ip_id` and `description` (a convenience key the
+  connector adds itself) matched. Derived from the manifest + the mock seed,
+  not observed live. The playbook has no run on the rebuilt soar8. The output
+  field *names* (`hostname`, `subnet`, …) are unchanged for callers.
+- **`efficientip_ddi_action_test`** is now 3 branches (test connectivity, get
+  ip address, list subnets); `run_list_aliases`/`note_ip_and_alias` became
+  `note_get_ip_address`, and the `get ip pool` branch is gone.
+- **`uc17_verify.sh`** checks 2–5 now target `get ip address` on the seed
+  `10.20.30.40` (ip_id 1001, `host01.corp.local`) instead of the 2-alias seed.
+- **Not changed:** the mocks still serve the removed endpoints (harmless), and
+  `uc17_airgapped_probe.sh` sections 5–6 still probe them (now moot). The
+  handover mirror `soar-uc17-handover` still carries v1.0.10 until re-exported.
+
+**Live-verified 2026-09-24 against soar8 + mock.** App 196 upgraded
+1.0.10 -> 1.0.11 in place (REST lists exactly `test connectivity`,
+`get ip address`, `list subnets`); playbooks deployed as `efficientip_ddi_enrich`
+id 55 v2 and `efficientip_ddi_action_test` id 56 v2 (historical ids, resolve by
+name). Test container 144 (`efficientip_ddi v1.0.10 verify`).
+
+| Check | Result |
+|---|---|
+| `uc17_verify.sh` 2 — mock direct | 1 record, ip_id 1001, `host01.corp.local` |
+| 3 — `get ip address` via `action_run` | success, 1 data row, `subnet_name` CORP_LAN-USERS |
+| 4 — enrich PB, `10.20.30.40` | run success; output `hostname` host01.corp.local, `subnet` CORP_LAN-USERS, `space` Corporate, `mac_address` 00:1A:2B:3C:4D:5E, `ddi_class` Standard, `description` Workstation - Finance Dept, `status` success |
+| 5 — action-test PB | run success; 3 notes, all PASS |
+| enrich PB, `10.20.30.99` (sparse seed) | run success; empty hostname/MAC/description, subnet/space/class filled, `status` success |
+| enrich PB, `10.20.30.200` (not in IPAM) | output `status` partial, note written; **run status `failed`**. That is the known platform aggregation of a failed action, unchanged from 2026-08-25 |
+
+That is the first live proof of the datapath fix: all five previously dead
+fields now carry values.
+
+`uc17_verify.sh` also had a stale `CONTAINER=1`. Container 1 has not existed
+since the 2026-09-05 rebuild, so every run request failed with "Container 1
+not found" and the script printed `None` ids instead of stopping. It now
+resolves the newest container whose name contains `efficientip_ddi`, with a
+`UC17_CONTAINER` override, and fails loudly when none exists.
+
+## Reconciliation after the 8.6 rebuild (2026-09-09/10)
+
+A peer session relayed a claim (two apps at ids 205/206, playbooks
+722-724) that turned out to be stale — checked against live soar8 via
+REST and it doesn't match anything currently there. **Ground truth as of
+2026-09-09**, verified via `GET /rest/app` and `GET /rest/playbook`: one
+app (`EfficientIP DDI`, id **196**), two playbooks
+(`efficientip_ddi_enrich` id **18**, `efficientip_ddi_action_test` id
+**19**), both v1 — a clean single-connector deploy from repo HEAD,
+consistent with the 2026-08-31 consolidation. The 205/206/722-724 numbers
+almost certainly describe pre-2026-09-05-rebuild state that no longer
+exists; don't chase them.
+
+The real, concrete gap found by comparing repo HEAD to live state:
+**v1.0.9's `user_agent` fix was decided and shipped in the repo
+(2026-09-02) but never installed** — the 8.6 rebuild reset the live app
+before that install happened. Closed in the same pass, filed as v1.0.10:
+
+- Manifest default changed `"curl/8.4.0"` → `""` (the 2026-09-02 client
+  bisect had already cleared User-Agent as a 401 suspect, so shipping it
+  forged by default was leftover test scaffolding, not an active fix).
+- **The manifest default alone doesn't retroactively fix an existing
+  asset** — the live `efficientip_ddi mock` asset still had
+  `user_agent: "curl/8.4.0"` saved in its own configuration from before,
+  which the handover export would otherwise have shipped verbatim (not in
+  `redacted_fields`, so it crosses the air gap as a literal value).
+  Updated the live asset directly (full-config POST, password fields
+  re-supplied from the mock's own source constants, never GET-then-write-
+  back — see `recreate-assets-from-export.py`'s established pattern).
+- Rebuilt, installed live (app 196, same appid), re-verified via
+  `efficientip_ddi_action_test`: 5/5 actions PASS, both before and after
+  the asset fix.
+- Re-exported (`dist/handover/efficientip_ddi_enrich-2026-09-09`) and
+  pushed to the mirror (`cyberkara/soar-uc17-handover` — public,
+  deliberately, per standing user decision; visibility not touched).
+  `.gitleaksignore` repinned: the private-key fingerprint shifted
+  1075-1077 → 1106 (v1.0.9's diagnostics code, never previously exported,
+  landed between refreshes) and this gitleaks version reports the
+  three-delimiter block as one finding instead of three; 7 new
+  `generic-api-key` false positives appeared and were documented — SOAR's
+  own VPE-generated `comparisonKey` node-bookkeeping identifiers in the
+  playbook JSON, not credentials. `gitleaks detect` clean before push.
+
+**Not done, still owed:** the `add_debug_data()` finding
+([[project-soar85-debug-data-dropped]]) and the App Debugger SDK-vs-classic
+decision ([[project-soar85-app-debugger-sdk-action-not-found]]) were both
+established on SOAR 8.5 and explicitly flagged as needing a retest on 8.6 —
+neither was retested in this pass, which was scoped to the one concrete
+repo-vs-live gap above.
+
 ## [!] SOLVED — the 401 was the gateway's backend leg, not this connector (2026-09-02)
 
 **Read this before any other dated section below.** Everything under it that

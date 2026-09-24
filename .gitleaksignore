@@ -45,7 +45,11 @@
 # first delimiter) rather than three, unlike the original 2026-09-01 pinning
 # -- verified by grep that all three delimiter lines are still present
 # (1106-1108) and gitleaks only flags the first.
-connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:1106
+# 2026-09-24 - repinned for v1.0.11 (get ip pool + list aliases removed; the
+# two handlers and their dispatch entries came out above _normalize_pem, so
+# 1106 -> 1023). Verified by reading the function: block_types delimiter
+# constants only, and zero base64 runs over 60 chars anywhere in the package.
+connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:1023
 
 # False positive: SOAR's own VPE-generated node bookkeeping field, not a
 # credential. Every decision/filter block's condition gets a
@@ -62,10 +66,11 @@ connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:1106
 # them. Re-check line numbers on every future export -- also a new category
 # to watch for even if line numbers don't shift, since these regenerate on
 # every VPE save with new UUIDs.
-playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:171
+# 2026-09-24 - repinned: 7 -> 3. The check_ip_found decision block was deleted
+# with the list_aliases chain, taking its comparisonKey values with it. The
+# three left (138, 155: check_input's; 188: the get_ip_address action block's
+# unused loop-condition placeholder "comparison_key_0") were each verified as a
+# "comparisonKey" line with nothing else on it.
+playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:138
+playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:155
 playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:188
-playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:221
-playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:292
-playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:299
-playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:316
-playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:349

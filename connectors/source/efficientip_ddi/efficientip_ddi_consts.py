@@ -72,8 +72,6 @@ MAX_RETRY_BACKOFF = 30.0
 # Endpoints -- vendor-confirmed real on this org's APIM (see README.md)
 IP_ADDRESS_LIST_PATH = "/rest/ip_address_list"
 IP_BLOCK_SUBNET_LIST_PATH = "/rest/ip_block_subnet_list"
-IP_POOL_LIST_PATH = "/rest/ip_pool_list"
-IP_ALIAS_LIST_PATH = "/rest/ip_alias_list/ip_id/{ip_id}"
 
 # Caller-facing filter parameter -> the WHERE column it actually filters on,
 # for ip_block_subnet_list. Two entries are NOT identity mappings, which is why

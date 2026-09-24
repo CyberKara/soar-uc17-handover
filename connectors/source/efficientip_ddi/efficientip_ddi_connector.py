@@ -40,9 +40,7 @@ from efficientip_ddi_consts import (
     DEFAULT_TIMEOUT,
     HTTP_STATUS_UNAUTHORIZED,
     IP_ADDRESS_LIST_PATH,
-    IP_ALIAS_LIST_PATH,
     IP_BLOCK_SUBNET_LIST_PATH,
-    IP_POOL_LIST_PATH,
     LIST_SUBNETS_FILTERS,
     MAX_RETRY_BACKOFF,
     MAX_RETRY_COUNT,
@@ -81,8 +79,6 @@ class EfficientipDdiConnector(BaseConnector):
             "test_connectivity": self._handle_test_connectivity,
             "get_ip_address": self._handle_get_ip_address,
             "list_subnets": self._handle_list_subnets,
-            "get_ip_pool": self._handle_get_ip_pool,
-            "list_aliases": self._handle_list_aliases,
         }
 
         action = action_mapping.get(action_id)
@@ -217,85 +213,6 @@ class EfficientipDdiConnector(BaseConnector):
 
         return action_result.set_status(
             phantom.APP_SUCCESS, "Successfully retrieved {} subnet record(s)".format(len(records))
-        )
-
-    def _handle_get_ip_pool(self, param):
-        action_result = self.add_action_result(ActionResult(dict(param)))
-        self.save_progress("DEBUG GUI: Starting get ip pool action")
-
-        name = param["name"]
-        limit = self._limit_from(param, action_result)
-        if limit is None:
-            return action_result.get_status()
-
-        ret_val, records = self._make_rest_call(
-            "GET", IP_POOL_LIST_PATH, self._bounded_query(limit, "pool_name='{}'".format(self._sql_escape(name))), action_result
-        )
-        if phantom.is_fail(ret_val):
-            return action_result.get_status()
-
-        records = self._ensure_list(records, action_result)
-        if records is None:
-            return action_result.get_status()
-        if not records:
-            return action_result.set_status(phantom.APP_ERROR, "No IP pool found in SOLIDserver for {}".format(name))
-
-        # Raw pass-through, one data item per record -- see
-        # _handle_get_ip_address for both rationales.
-        for record in records:
-            class_params = self._parse_class_parameters(record.get("pool_class_parameters", ""))
-            record["description"] = class_params.get("description", "")
-            action_result.add_data(record)
-
-        summary = action_result.update_summary({})
-        summary["total_objects"] = len(records)
-        summary["total_objects_successful"] = len(records)
-
-        return action_result.set_status(
-            phantom.APP_SUCCESS, "Successfully retrieved {} IP pool record(s)".format(len(records))
-        )
-
-    def _handle_list_aliases(self, param):
-        action_result = self.add_action_result(ActionResult(dict(param)))
-        self.save_progress("DEBUG GUI: Starting list aliases action")
-
-        # Validated, not interpolated raw: ip_id is declared as a string
-        # param (so the "get ip address" chain is wireable in the VPE), and a
-        # stray float like 1001.0 would otherwise become
-        # /rest/ip_alias_list/ip_id/1001.0 and a false "no aliases".
-        ip_id = self._validate_int(param["ip_id"], "ip_id", action_result)
-        if ip_id is None:
-            return action_result.get_status()
-        limit = self._limit_from(param, action_result)
-        if limit is None:
-            return action_result.get_status()
-
-        ret_val, records = self._make_rest_call(
-            "GET", IP_ALIAS_LIST_PATH.format(ip_id=ip_id), {"limit": limit}, action_result
-        )
-        if phantom.is_fail(ret_val):
-            return action_result.get_status()
-
-        records = self._ensure_list(records, action_result)
-        if records is None:
-            return action_result.get_status()
-        if not records:
-            return action_result.set_status(
-                phantom.APP_ERROR, "No aliases found in SOLIDserver for ip_id {}".format(ip_id)
-            )
-
-        # Raw pass-through, one data item per alias -- an IP with two DNS
-        # aliases must report two rows, not silently just the first.
-        for record in records:
-            record["ip_id"] = str(ip_id)
-            action_result.add_data(record)
-
-        summary = action_result.update_summary({})
-        summary["total_objects"] = len(records)
-        summary["total_objects_successful"] = len(records)
-
-        return action_result.set_status(
-            phantom.APP_SUCCESS, "Successfully retrieved {} alias record(s)".format(len(records))
         )
 
     # ---- REST Call Wrapper ----
@@ -987,8 +904,8 @@ class EfficientipDdiConnector(BaseConnector):
         """Coerce a numeric param to a real int, or fail the action.
 
         SOAR hands numeric params through as float or str often enough that
-        raw interpolation is unsafe: a float 1001.0 interpolated into a URL
-        path yields /rest/ip_alias_list/ip_id/1001.0 and a false "no aliases".
+        raw interpolation is unsafe: a float 5.0 interpolated into the query
+        string yields limit=5.0, which the backend is not known to accept.
         Same precedent as proofpoint_trap's _validate_integer().
         """
         try:

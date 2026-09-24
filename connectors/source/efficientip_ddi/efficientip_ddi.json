@@ -1,7 +1,7 @@
 {
     "appid": "33986f6c-2005-4c3a-aa8b-d7a83caa76d0",
     "name": "EfficientIP DDI",
-    "description": "Analyst-driven IP/DNS lookup enrichment against an EfficientIP SOLIDserver DDI backend reached through an APIM gateway. Provides IPAM address lookup, alias, subnet and pool queries over mTLS with Basic APIM credentials and forwarded SOLIDserver credentials.",
+    "description": "Analyst-driven IPAM enrichment against an EfficientIP SOLIDserver DDI backend reached through an APIM gateway. Provides IP address lookup and subnet queries over mTLS with Basic APIM credentials and forwarded SOLIDserver credentials.",
     "type": "ddi",
     "product_vendor": "EfficientIP",
     "product_name": "SOLIDserver",
@@ -10,8 +10,8 @@
     "logo_dark": "logo_dark.svg",
     "publisher": "Ted",
     "license": "Copyright (c) 2026",
-    "app_version": "1.0.10",
-    "utctime_updated": "2026-09-09T00:00:00.000000Z",
+    "app_version": "1.0.11",
+    "utctime_updated": "2026-09-24T12:30:04.880594Z",
     "package_name": "phantom_efficientip_ddi",
     "main_module": "efficientip_ddi_connector.py",
     "min_phantom_version": "6.4.1",
@@ -326,175 +326,6 @@
                 {
                     "data_path": "action_result.data.*.description",
                     "data_type": "string"
-                },
-                {
-                    "data_path": "action_result.status",
-                    "data_type": "string",
-                    "example_values": [
-                        "success",
-                        "failed"
-                    ]
-                },
-                {
-                    "data_path": "action_result.message",
-                    "data_type": "string"
-                },
-                {
-                    "data_path": "summary.total_objects",
-                    "data_type": "numeric"
-                },
-                {
-                    "data_path": "summary.total_objects_successful",
-                    "data_type": "numeric"
-                }
-            ],
-            "render": {
-                "type": "table"
-            },
-            "versions": "EQ(*)"
-        },
-        {
-            "action": "get ip pool",
-            "identifier": "get_ip_pool",
-            "description": "Look up an IP pool in SOLIDserver's IPAM by name for enrichment. Field names are inferred by analogy to ip_address_list's confirmed conventions, NOT independently vendor-confirmed -- check raw_json if a named field comes back empty.",
-            "type": "investigate",
-            "read_only": true,
-            "parameters": {
-                "name": {
-                    "description": "Pool name to look up in SOLIDserver's IPAM",
-                    "data_type": "string",
-                    "required": true,
-                    "order": 0
-                },
-                "limit": {
-                    "description": "Maximum number of records to return (default 1). Must be a positive whole number -- an unbounded call times out server-side on the real APIM, so a limit always goes on the wire.",
-                    "data_type": "numeric",
-                    "required": false,
-                    "default": 1,
-                    "order": 1
-                }
-            },
-            "output": [
-                {
-                    "data_path": "action_result.parameter.name",
-                    "data_type": "string"
-                },
-                {
-                    "data_path": "action_result.parameter.limit",
-                    "data_type": "numeric"
-                },
-                {
-                    "data_path": "action_result.data.*.pool_id",
-                    "data_type": "string"
-                },
-                {
-                    "data_path": "action_result.data.*.pool_name",
-                    "data_type": "string"
-                },
-                {
-                    "data_path": "action_result.data.*.subnet_name",
-                    "data_type": "string"
-                },
-                {
-                    "data_path": "action_result.data.*.site_name",
-                    "data_type": "string"
-                },
-                {
-                    "data_path": "action_result.data.*.start_hostaddr",
-                    "data_type": "string",
-                    "contains": [
-                        "ip"
-                    ]
-                },
-                {
-                    "data_path": "action_result.data.*.end_hostaddr",
-                    "data_type": "string",
-                    "contains": [
-                        "ip"
-                    ]
-                },
-                {
-                    "data_path": "action_result.data.*.pool_class_name",
-                    "data_type": "string"
-                },
-                {
-                    "data_path": "action_result.data.*.pool_class_parameters",
-                    "data_type": "string"
-                },
-                {
-                    "data_path": "action_result.data.*.description",
-                    "data_type": "string"
-                },
-                {
-                    "data_path": "action_result.status",
-                    "data_type": "string",
-                    "example_values": [
-                        "success",
-                        "failed"
-                    ]
-                },
-                {
-                    "data_path": "action_result.message",
-                    "data_type": "string"
-                },
-                {
-                    "data_path": "summary.total_objects",
-                    "data_type": "numeric"
-                },
-                {
-                    "data_path": "summary.total_objects_successful",
-                    "data_type": "numeric"
-                }
-            ],
-            "render": {
-                "type": "table"
-            },
-            "versions": "EQ(*)"
-        },
-        {
-            "action": "list aliases",
-            "identifier": "list_aliases",
-            "description": "List DNS aliases for a known SOLIDserver ip_id (chain off 'get ip address' output). Field names are inferred, NOT independently vendor-confirmed -- check raw_json if alias_name comes back empty.",
-            "type": "investigate",
-            "read_only": true,
-            "parameters": {
-                "ip_id": {
-                    "description": "Internal SOLIDserver ip_id of the address to list aliases for (from 'get ip address' output)",
-                    "data_type": "string",
-                    "required": true,
-                    "order": 0
-                },
-                "limit": {
-                    "description": "Maximum number of records to return (default 1). Must be a positive whole number -- an unbounded call times out server-side on the real APIM, so a limit always goes on the wire.",
-                    "data_type": "numeric",
-                    "required": false,
-                    "default": 1,
-                    "order": 1
-                }
-            },
-            "output": [
-                {
-                    "data_path": "action_result.parameter.ip_id",
-                    "data_type": "string"
-                },
-                {
-                    "data_path": "action_result.parameter.limit",
-                    "data_type": "numeric"
-                },
-                {
-                    "data_path": "action_result.data.*.ip_alias_id",
-                    "data_type": "string"
-                },
-                {
-                    "data_path": "action_result.data.*.ip_id",
-                    "data_type": "string"
-                },
-                {
-                    "data_path": "action_result.data.*.alias_name",
-                    "data_type": "string",
-                    "contains": [
-                        "host name"
-                    ]
                 },
                 {
                     "data_path": "action_result.status",

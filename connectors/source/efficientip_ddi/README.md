@@ -77,8 +77,11 @@ unbounded scan and time out server-side. So a bound always goes on the wire:
 | `test connectivity` | test | — | `GET /rest/ip_block_subnet_list?limit=1` |
 | `get ip address` | investigate | `address` (req), `limit` (default 1) | `GET /rest/ip_address_list?WHERE=host_addr='<dotted ip>'` |
 | `list subnets` | investigate | exactly one of `subnet_name` / `subnet_id` / `parent_subnet_name` / `site_name`; `limit` (default 1) | `GET /rest/ip_block_subnet_list` |
-| `get ip pool` | investigate | `name` (req), `limit` (default 1) | `GET /rest/ip_pool_list?WHERE=pool_name='<name>'` |
-| `list aliases` | investigate | `ip_id` (req, from `get ip address`), `limit` (default 1) | `GET /rest/ip_alias_list/ip_id/{ip_id}` |
+
+Two endpoints only, by user decision 2026-09-24: `ip_block_subnet_list` and
+`ip_address_list`. `get ip pool` (`/rest/ip_pool_list`) and `list aliases`
+(`/rest/ip_alias_list/ip_id/{ip_id}`) were removed in v1.0.11 — do not re-add
+them without asking.
 
 All record-returning actions emit **one row per record** and carry a `raw_json`
 fallback field, because not every field name is independently vendor-confirmed
@@ -298,9 +301,9 @@ the same wrong names, so everything passed locally):
 
 - `get ip address` — hostname field is `name`, not `hostdev_name`
   (`hostdev_name` is not a real `ip_address_list` field at all).
-- `get ip pool` — range fields are `start_hostaddr`/`end_hostaddr`, not
+- `get ip pool` (removed in v1.0.11) — range fields are `start_hostaddr`/`end_hostaddr`, not
   `pool_start_hostaddr`/`pool_end_hostaddr`.
-- `list aliases` — the alias name field is `alias_name`, not `ip_alias`
+- `list aliases` (removed in v1.0.11) — the alias name field is `alias_name`, not `ip_alias`
   (`ip_alias` is real, but on `ip_address_list`, not `ip_alias_list`).
 
 A fourth followed the same shape: on `ip_block_subnet_list`, `name` is only the
@@ -314,9 +317,6 @@ also accept `name`.
 
 **Still open:**
 
-- `ip_alias_list`'s `alias_name` and `get_ip_pool`'s identity field remain
-  **analogy-based**, not independently confirmed against this org's real APIM —
-  `raw_json` covers them meanwhile. A real-appliance retest is still owed.
 - `list subnets`' `subnet_start_ip_addr`/`subnet_end_ip_addr` mapping is an
   analogy to the `subnet_*`-prefixed fields nested inside
   `ip_address_list`/`ip_pool_list`; the current public docs only cover a
@@ -336,6 +336,16 @@ also accept `name`.
   Percent-encoding of the `WHERE` clause and the `limit` parameter are both
   ruled out, and the `403 = bad request` mapping rules out every remaining
   query-shaped explanation.
+
+## v1.0.11 (2026-09-24) — scope cut to two endpoints
+
+User decision: the connector keeps only `ip_block_subnet_list` (`list subnets`,
+plus `test connectivity`) and `ip_address_list` (`get ip address`). `get ip pool`
+and `list aliases` were removed from the manifest, the handlers, the constants
+and the tests; the transport tests that used `list aliases` as their carrier
+(retry, 400/403/204, limit, headers) now run on `list subnets`. This also
+retires the owed real-appliance retest of `alias_name` and the pool identity
+field. `efficientip_ddi_enrich` no longer chains into an alias lookup.
 
 ## v1.0.10 (2026-09-09) — user_agent default blanked; reconciliation after the 8.6 rebuild
 

@@ -1,6 +1,6 @@
 # UC17 — EfficientIP DDI Enrichment — Paquet de transfert (déploiement air-gapped)
 
-Généré le 2026-09-09 23:53 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
+Généré le 2026-09-24 12:48 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
 
 Ce paquet est autonome — tout ce qu'il faut pour déployer ce cas d'usage manuellement
 dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
@@ -11,7 +11,7 @@ dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
 
 | Chemin | Contenu |
 |--------|---------|
-| `connectors/` | Paquet(s) applicatif(s) connecteur : efficientip_ddi-v1.0.10.tgz |
+| `connectors/` | Paquet(s) applicatif(s) connecteur : efficientip_ddi-v1.0.11.tgz |
 | `connectors/source/` | Même(s) connecteur(s), extrait(s) — pour lecture, pas pour import |
 | `playbooks/*.tgz` (PB) | efficientip_ddi_enrich, efficientip_ddi_action_test |
 | `playbooks/source/` | Mêmes CF/playbooks, extraits — pour lecture, pas pour import |
@@ -26,6 +26,8 @@ depuis un paquet précédent. Sur une cible vierge, passez à l'ordre
 d'installation.
 
 - **Ce qui s'applique dépend de ce qui est déjà installé — vérifiez d'abord la liste des applications.** Ouvrez Apps et recherchez `EfficientIP`. Si vous voyez **une seule** application (nommée `efficientip_ddi` / `EfficientIP DDI`), vous avez installé le paquet du 2026-08-31 ou un plus récent : celui-ci est une **mise à jour normale, sur place**. Installez-le par-dessus l'application existante — même identifiant interne — et votre actif (asset) existant continue de fonctionner avec tous ses identifiants. **Ne supprimez rien et ne ressaisissez aucun identifiant.** Si en revanche vous voyez **deux** applications (`efficientip_ddi` et `EfficientIP DDI (Classic)`), vous êtes encore sur un paquet antérieur au 2026-08-31, et c'est la note ci-dessous qui vous concerne.
+
+- **Ce paquet retire deux actions du connecteur : `get ip pool` et `list aliases`** (connecteur v1.0.11). Le connecteur n'appelle plus que deux services SOLIDserver : `ip_address_list` (`get ip address`) et `ip_block_subnet_list` (`list subnets`, `test connectivity`). Après la mise à jour, tout playbook qui appelle encore une action retirée échoue à cette étape. Cela inclut les playbooks `efficientip_ddi_enrich` et `efficientip_ddi_action_test` de tout paquet précédent : réimportez les deux depuis ce paquet pour qu'ils remplacent les versions précédentes. Si vous avez construit vos propres playbooks sur `get ip pool` ou `list aliases`, retravaillez-les avant la mise à jour. Votre actif (asset) et ses identifiants ne sont pas concernés. Le nouveau `efficientip_ddi_enrich` corrige aussi sa note de synthèse : avec les paquets du 2026-08-31 au 2026-09-09, le nom d'hôte, le sous-réseau, l'espace, l'adresse MAC et la classe revenaient vides. Ils sont désormais renseignés.
 
 - **Uniquement si la liste des applications en montrait DEUX.** Jusqu'au 2026-08-31, ce cas d'usage livrait deux applications : `efficientip_ddi` (basée sur le SDK) et `EfficientIP DDI (Classic)`. L'application SDK est retirée, car ses actions ne peuvent pas être exécutées depuis la page d'édition/consultation du connecteur dans l'interface web de SOAR — une limite de la plateforme, non de l'application. L'application classique est désormais la seule, et elle reprend le nom `efficientip_ddi` sous un nouvel identifiant interne : SOAR l'installe donc comme une application entièrement nouvelle, sans rien mettre à jour. Après l'installation : supprimez LES DEUX anciennes applications ainsi que leurs actifs (assets) via l'interface web (Apps > l'application > Delete), puis créez un nouvel actif pour la nouvelle application à partir du modèle fourni dans ce paquet. Ressaisissez tous les identifiants à la main ; les champs secrets ne sont pas transmis dans le modèle.
 
@@ -64,13 +66,11 @@ d'installation.
 
 ## Vérification
 
-Une fois tout importé, ouvrez (ou créez) un container portant l'artifact que ce cas
-d'usage lit, puis lancez le playbook à la main dessus : Playbooks > Run Playbook. Voir le
-document de plan d'implémentation dans `docs/` pour les champs d'artifact attendus par
-chaque playbook,
-et vérifiez que l'exécution se termine et que ses résultats d'action / artifacts ajoutés
-sont corrects dans le container. Consultez `playbook.log`/`actiond.log` sur l'hôte SOAR
-cible si une exécution échoue ou si une action renvoie une erreur.
+1. **Lancez d'abord `efficientip_ddi_action_test`.** Il ne prend aucune entrée : ouvrez n'importe quel container, puis Playbooks > Run Playbook et choisissez-le. Il écrit trois notes, une par action du connecteur (`test connectivity`, `get ip address`, `list subnets`), chacune marquée PASS ou FAIL avec le message de l'action. Ses valeurs de test (`10.20.30.40`, `CORP_LAN-USERS`) viennent du mock du labo : sur votre IPAM, attendez-vous à ce que `test connectivity` soit PASS et que les deux autres signalent « not found », sauf si ces valeurs existent chez vous. Un « not found » prouve quand même que l'appel a atteint SOLIDserver et est revenu. Un message HTTP 401, TLS ou BAD REQUEST, non.
+
+2. **Lancez ensuite `efficientip_ddi_enrich` de la même façon.** Il ne lit aucun artifact. Run Playbook demande sa seule entrée, `ip` : donnez une adresse IPv4 qui existe dans votre IPAM. Il écrit une note `EfficientIP DDI Enrichment` avec le nom d'hôte, le sous-réseau, l'espace, l'adresse MAC, la classe et la description. Pour une adresse absente de votre IPAM, il écrit quand même la note, avec ces champs vides. L'exécution apparaît alors en échec parce que l'action de recherche a échoué. C'est attendu, ce n'est pas une panne.
+
+Si une exécution échoue d'une façon que les notes n'expliquent pas, consultez `playbook.log`/`actiond.log` sur l'hôte SOAR cible. Pour un HTTP 401 sur une action, voir Diagnostics ci-dessous.
 
 ## Diagnostics
 

@@ -54,46 +54,6 @@
                     "targetPort": "1_in"
                 },
                 {
-                    "id": "port_3_to_port_4",
-                    "sourceNode": "3",
-                    "sourcePort": "3_out",
-                    "targetNode": "4",
-                    "targetPort": "4_in"
-                },
-                {
-                    "id": "port_4_to_port_5",
-                    "conditions": [
-                        {
-                            "index": 0,
-                            "conditionKey": "condition_key_3"
-                        }
-                    ],
-                    "sourceNode": "4",
-                    "sourcePort": "4_out",
-                    "targetNode": "5",
-                    "targetPort": "5_in"
-                },
-                {
-                    "id": "port_4_to_port_6",
-                    "conditions": [
-                        {
-                            "index": 1,
-                            "conditionKey": "condition_key_4"
-                        }
-                    ],
-                    "sourceNode": "4",
-                    "sourcePort": "4_out",
-                    "targetNode": "6",
-                    "targetPort": "6_in"
-                },
-                {
-                    "id": "port_5_to_port_6",
-                    "sourceNode": "5",
-                    "sourcePort": "5_out",
-                    "targetNode": "6",
-                    "targetPort": "6_in"
-                },
-                {
                     "id": "port_6_to_port_7",
                     "sourceNode": "6",
                     "sourcePort": "6_out",
@@ -106,6 +66,13 @@
                     "sourcePort": "7_out",
                     "targetNode": "1",
                     "targetPort": "1_in"
+                },
+                {
+                    "id": "port_3_to_port_6",
+                    "sourceNode": "3",
+                    "sourcePort": "3_out",
+                    "targetNode": "6",
+                    "targetPort": "6_in"
                 }
             ],
             "nodes": {
@@ -264,135 +231,6 @@
                     "errors": {},
                     "warnings": {}
                 },
-                "4": {
-                    "x": 190,
-                    "y": 400,
-                    "id": "4",
-                    "data": {
-                        "id": "4",
-                        "type": "decision",
-                        "advanced": {
-                            "join": [],
-                            "delimiter": ",",
-                            "customName": "check ip found",
-                            "customNameId": 0,
-                            "delimiter_enabled": true
-                        },
-                        "conditions": [
-                            {
-                                "type": "if",
-                                "logic": "and",
-                                "display": "If",
-                                "customName": "lookup succeeded and ip_id found",
-                                "comparisons": [
-                                    {
-                                        "op": "==",
-                                        "param": "get_ip_address:action_result.status",
-                                        "value": "success",
-                                        "comparisonKey": "comparison_key_8c9fd3f0-45d8-4a4a-98d8-17e2c27bd15e",
-                                        "conditionIndex": 0
-                                    },
-                                    {
-                                        "op": "!=",
-                                        "param": "get_ip_address:action_result.data.*.ip_id",
-                                        "value": "",
-                                        "comparisonKey": "comparison_key_e1834483-6403-46f0-b677-017c3c0b62cc",
-                                        "conditionIndex": 0
-                                    }
-                                ],
-                                "conditionKey": "condition_key_3",
-                                "conditionIndex": 0
-                            },
-                            {
-                                "type": "else",
-                                "logic": "and",
-                                "display": "Else",
-                                "customName": "ip not found",
-                                "comparisons": [
-                                    {
-                                        "op": "==",
-                                        "param": "",
-                                        "value": "",
-                                        "comparisonKey": "comparison_key_14bb2c97-5ece-41fb-87b0-d717e526d10e",
-                                        "conditionIndex": 1
-                                    }
-                                ],
-                                "conditionKey": "condition_key_4",
-                                "conditionIndex": 1
-                            }
-                        ],
-                        "functionId": 3,
-                        "functionName": "check_ip_found"
-                    },
-                    "type": "decision",
-                    "errors": {},
-                    "warnings": {}
-                },
-                "5": {
-                    "x": 190,
-                    "y": 550,
-                    "id": "5",
-                    "data": {
-                        "id": "5",
-                        "loop": {
-                            "enabled": false,
-                            "pauseUnit": "m",
-                            "conditions": [
-                                {
-                                    "type": "if",
-                                    "logic": "and",
-                                    "comparisons": [
-                                        {
-                                            "op": "==",
-                                            "param": "",
-                                            "value": "",
-                                            "comparisonKey": "comparison_key_0"
-                                        }
-                                    ],
-                                    "conditionKey": "condition_key_0",
-                                    "conditionIndex": 0
-                                }
-                            ],
-                            "pauseValue": 2,
-                            "exitAfterUnit": "m",
-                            "exitLoopAfter": 2,
-                            "exitAfterValue": 10,
-                            "exitConditionEnabled": false
-                        },
-                        "type": "action",
-                        "action": "list aliases",
-                        "advanced": {
-                            "join": [],
-                            "note": "limit=50 on purpose: the connector's default of 1 would truncate to a single alias and make this playbook's alias_names/alias_count outputs meaningless. ip_id is a string parameter (connector 1.0.7+).",
-                            "customName": "list aliases",
-                            "description": "List DNS aliases for the ip_id returned by get ip address.",
-                            "customNameId": 0
-                        },
-                        "connector": "EfficientIP DDI",
-                        "actionType": "investigate",
-                        "functionId": 4,
-                        "parameters": {
-                            "ip_id": "get_ip_address:action_result.data.*.ip_id",
-                            "limit": "50"
-                        },
-                        "connectorId": "33986f6c-2005-4c3a-aa8b-d7a83caa76d0",
-                        "functionName": "list_aliases",
-                        "connectorConfigs": [
-                            "efficientip_ddi mock"
-                        ],
-                        "connectorVersion": "v1",
-                        "requiredParameters": [
-                            {
-                                "field": "ip_id",
-                                "default": "",
-                                "data_type": "string"
-                            }
-                        ]
-                    },
-                    "type": "action",
-                    "errors": {},
-                    "warnings": {}
-                },
                 "6": {
                     "x": 190,
                     "y": 700,
@@ -406,18 +244,17 @@
                             "customName": "format summary",
                             "customNameId": 0
                         },
-                        "template": "# EfficientIP DDI Enrichment\n\n**IP Address:** {0}\n**Lookup Status:** {1}\n**Hostname:** {2}\n**Subnet:** {3}\n**Space:** {4}\n**MAC Address:** {5}\n**Class:** {6}\n**Description:** {7}\n\n**Aliases:** {8}",
+                        "template": "# EfficientIP DDI Enrichment\n\n**IP Address:** {0}\n**Lookup Status:** {1}\n**Hostname:** {2}\n**Subnet:** {3}\n**Space:** {4}\n**MAC Address:** {5}\n**Class:** {6}\n**Description:** {7}",
                         "functionId": 5,
                         "parameters": [
                             "playbook_input:ip",
                             "get_ip_address:action_result.status",
-                            "get_ip_address:action_result.data.*.hostname",
-                            "get_ip_address:action_result.data.*.subnet",
-                            "get_ip_address:action_result.data.*.space",
-                            "get_ip_address:action_result.data.*.mac_address",
-                            "get_ip_address:action_result.data.*.ddi_class",
-                            "get_ip_address:action_result.data.*.description",
-                            "list_aliases:action_result.data.*.alias_name"
+                            "get_ip_address:action_result.data.*.name",
+                            "get_ip_address:action_result.data.*.subnet_name",
+                            "get_ip_address:action_result.data.*.site_name",
+                            "get_ip_address:action_result.data.*.mac_addr",
+                            "get_ip_address:action_result.data.*.ip_class_name",
+                            "get_ip_address:action_result.data.*.description"
                         ],
                         "functionName": "format_summary"
                     },
@@ -434,7 +271,7 @@
                         "type": "code",
                         "advanced": {
                             "join": [],
-                            "note": "Converges both the full (get_ip_address + list_aliases) and partial (get_ip_address only, no ip_id) paths. Reads raw action-result fields via collect2 for save_playbook_output_data, separately from format_summary's rendered note text.",
+                            "note": "Runs after get_ip_address on both outcomes (found / not found). Reads raw action-result fields via collect2 for save_playbook_output_data, separately from format_summary's rendered note text.",
                             "customName": "finalize",
                             "description": "Write the enrichment note and expose raw fields for a parent playbook.",
                             "customNameId": 0
@@ -445,19 +282,18 @@
                             "format_summary:formatted_data",
                             "get_ip_address:action_result.status",
                             "get_ip_address:action_result.data.*.ip_id",
-                            "get_ip_address:action_result.data.*.hostname",
-                            "get_ip_address:action_result.data.*.subnet",
-                            "get_ip_address:action_result.data.*.space",
-                            "get_ip_address:action_result.data.*.mac_address",
-                            "get_ip_address:action_result.data.*.ddi_class",
-                            "get_ip_address:action_result.data.*.description",
-                            "list_aliases:action_result.data.*.alias_name"
+                            "get_ip_address:action_result.data.*.name",
+                            "get_ip_address:action_result.data.*.subnet_name",
+                            "get_ip_address:action_result.data.*.site_name",
+                            "get_ip_address:action_result.data.*.mac_addr",
+                            "get_ip_address:action_result.data.*.ip_class_name",
+                            "get_ip_address:action_result.data.*.description"
                         ],
                         "outputVariables": []
                     },
                     "type": "code",
                     "errors": {},
-                    "userCode": "    ################################################################################\n\n    summary_note = phantom.get_format_data(name=\"format_summary\")\n\n    result = phantom.collect2(\n        container=container,\n        datapath=[\n            \"get_ip_address:action_result.status\",\n            \"get_ip_address:action_result.data.*.ip_id\",\n            \"get_ip_address:action_result.data.*.hostname\",\n            \"get_ip_address:action_result.data.*.subnet\",\n            \"get_ip_address:action_result.data.*.space\",\n            \"get_ip_address:action_result.data.*.mac_address\",\n            \"get_ip_address:action_result.data.*.ddi_class\",\n            \"get_ip_address:action_result.data.*.description\",\n        ]\n    )\n    row = result[0] if result else [None] * 8\n    status, ip_id, hostname, subnet, space, mac_address, ddi_class, description = (\n        row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]\n    )\n\n    # Every row, not just alias_result[0][0]: \"list aliases\" returns one data\n    # item per alias, so taking the first silently dropped the rest -- an IP\n    # with two aliases reported one, with no sign more existed.\n    alias_result = phantom.collect2(\n        container=container,\n        datapath=[\"list_aliases:action_result.data.*.alias_name\"]\n    )\n    aliases = [row[0] for row in (alias_result or []) if row and row[0]]\n    alias_name = aliases[0] if aliases else \"\"\n\n    ip_input = phantom.collect2(container=container, datapath=[\"playbook_input:ip\"])\n    ip_address = ip_input[0][0] if ip_input and ip_input[0][0] else \"\"\n\n    output_status = \"success\" if (status == \"success\" and ip_id) else \"partial\"\n\n    phantom.add_note(\n        container=container,\n        note_type=\"general\",\n        title=\"EfficientIP DDI Enrichment\",\n        content=summary_note,\n    )\n\n    # save_playbook_output_data() is only callable from on_finish() on SOAR 8.5\n    # (RuntimeError otherwise) -- stash the output via save_run_data and let\n    # on_finish() do the actual save. See playbook-patterns.md's documented\n    # \"save_run_data + on_finish output\" pattern.\n    phantom.save_run_data(key=\"playbook_output\", value=json.dumps({\n        \"status\": output_status,\n        \"ip_address\": ip_address,\n        \"hostname\": hostname or \"\",\n        \"subnet\": subnet or \"\",\n        \"space\": space or \"\",\n        \"mac_address\": mac_address or \"\",\n        \"ddi_class\": ddi_class or \"\",\n        \"description\": description or \"\",\n        \"ip_id\": ip_id or \"\",\n        \"alias_name\": alias_name,\n        \"alias_names\": \", \".join(aliases),\n        \"alias_count\": len(aliases),\n    }))\n\n    phantom.debug(\"EfficientIP DDI enrichment complete: status={}\".format(output_status))\n\n    ################################################################################\n",
+                    "userCode": "    ################################################################################\n\n    summary_note = phantom.get_format_data(name=\"format_summary\")\n\n    result = phantom.collect2(\n        container=container,\n        datapath=[\n            \"get_ip_address:action_result.status\",\n            \"get_ip_address:action_result.data.*.ip_id\",\n            \"get_ip_address:action_result.data.*.name\",\n            \"get_ip_address:action_result.data.*.subnet_name\",\n            \"get_ip_address:action_result.data.*.site_name\",\n            \"get_ip_address:action_result.data.*.mac_addr\",\n            \"get_ip_address:action_result.data.*.ip_class_name\",\n            \"get_ip_address:action_result.data.*.description\",\n        ]\n    )\n    row = result[0] if result else [None] * 8\n    status, ip_id, hostname, subnet, space, mac_address, ddi_class, description = (\n        row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]\n    )\n\n    ip_input = phantom.collect2(container=container, datapath=[\"playbook_input:ip\"])\n    ip_address = ip_input[0][0] if ip_input and ip_input[0][0] else \"\"\n\n    output_status = \"success\" if (status == \"success\" and ip_id) else \"partial\"\n\n    phantom.add_note(\n        container=container,\n        note_type=\"general\",\n        title=\"EfficientIP DDI Enrichment\",\n        content=summary_note,\n    )\n\n    # save_playbook_output_data() is only callable from on_finish() on SOAR 8.5\n    # (RuntimeError otherwise) -- stash the output via save_run_data and let\n    # on_finish() do the actual save. See playbook-patterns.md's documented\n    # \"save_run_data + on_finish output\" pattern.\n    phantom.save_run_data(key=\"playbook_output\", value=json.dumps({\n        \"status\": output_status,\n        \"ip_address\": ip_address,\n        \"hostname\": hostname or \"\",\n        \"subnet\": subnet or \"\",\n        \"space\": space or \"\",\n        \"mac_address\": mac_address or \"\",\n        \"ddi_class\": ddi_class or \"\",\n        \"description\": description or \"\",\n        \"ip_id\": ip_id or \"\",\n    }))\n\n    phantom.debug(\"EfficientIP DDI enrichment complete: status={}\".format(output_status))\n\n    ################################################################################\n",
                     "warnings": {
                         "config": [
                             "Reconfigure invalid datapath."
@@ -509,12 +345,12 @@
                     },
                     "type": "code",
                     "errors": {},
-                    "userCode": "    ################################################################################\n\n    error_note = phantom.get_format_data(name=\"format_error\")\n\n    phantom.add_note(\n        container=container,\n        note_type=\"general\",\n        title=\"EfficientIP DDI Enrichment - Error\",\n        content=error_note,\n    )\n\n    # save_playbook_output_data() is only callable from on_finish() on SOAR 8.5\n    # (RuntimeError otherwise) -- stash the output via save_run_data and let\n    # on_finish() do the actual save. See playbook-patterns.md's documented\n    # \"save_run_data + on_finish output\" pattern.\n    phantom.save_run_data(key=\"playbook_output\", value=json.dumps({\n        \"status\": \"error\",\n        \"ip_address\": \"\",\n        \"hostname\": \"\",\n        \"subnet\": \"\",\n        \"space\": \"\",\n        \"mac_address\": \"\",\n        \"ddi_class\": \"\",\n        \"description\": \"\",\n        \"ip_id\": \"\",\n        \"alias_name\": \"\",\n        \"alias_names\": \"\",\n        \"alias_count\": 0,\n    }))\n\n    ################################################################################\n",
+                    "userCode": "    ################################################################################\n\n    error_note = phantom.get_format_data(name=\"format_error\")\n\n    phantom.add_note(\n        container=container,\n        note_type=\"general\",\n        title=\"EfficientIP DDI Enrichment - Error\",\n        content=error_note,\n    )\n\n    # save_playbook_output_data() is only callable from on_finish() on SOAR 8.5\n    # (RuntimeError otherwise) -- stash the output via save_run_data and let\n    # on_finish() do the actual save. See playbook-patterns.md's documented\n    # \"save_run_data + on_finish output\" pattern.\n    phantom.save_run_data(key=\"playbook_output\", value=json.dumps({\n        \"status\": \"error\",\n        \"ip_address\": \"\",\n        \"hostname\": \"\",\n        \"subnet\": \"\",\n        \"space\": \"\",\n        \"mac_address\": \"\",\n        \"ddi_class\": \"\",\n        \"description\": \"\",\n        \"ip_id\": \"\",\n    }))\n\n    ################################################################################\n",
                     "warnings": {}
                 }
             },
             "notes": "",
-            "description": "Data playbook for EfficientIP DDI (SOLIDserver) IP address enrichment. Looks up an IP in IPAM, then chains into a DNS alias lookup off the returned ip_id."
+            "description": "Data playbook for EfficientIP DDI (SOLIDserver) IP address enrichment. Looks up an IP in IPAM and writes a summary note."
         },
         "input_spec": [
             {
@@ -577,26 +413,7 @@
             {
                 "name": "ip_id",
                 "contains": [],
-                "description": "Internal SOLIDserver ip_id, used to chain into list aliases"
-            },
-            {
-                "name": "alias_name",
-                "contains": [
-                    "host name"
-                ],
-                "description": "First DNS alias from list aliases, if an ip_id was found and an alias exists. Kept for callers that expect a single name -- see alias_names for the complete set."
-            },
-            {
-                "name": "alias_names",
-                "contains": [
-                    "host name"
-                ],
-                "description": "Every DNS alias from list aliases, comma-separated (empty if none)"
-            },
-            {
-                "name": "alias_count",
-                "contains": [],
-                "description": "Number of DNS aliases returned by list aliases"
+                "description": "Internal SOLIDserver ip_id of the matched record"
             }
         ],
         "playbook_type": "data",
@@ -604,7 +421,7 @@
         "schema": "5.0.24",
         "version": "8.5.0.248"
     },
-    "create_time": "2026-09-05T17:15:28.609677Z",
+    "create_time": "2026-09-24T12:42:49.684612Z",
     "draft_mode": false,
     "labels": [
         "events"

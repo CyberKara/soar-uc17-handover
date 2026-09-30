@@ -1,0 +1,27 @@
+# One-shot backfill: a GitHub Release for every connector version in this repo's
+# history (see tools/create_releases.sh). Idempotent -- a version that already
+# has a release is skipped -- so a second run changes nothing. Delete this file
+# once the releases exist.
+name: Release backfill
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/release-backfill.yml
+      - tools/create_releases.sh
+
+permissions:
+  contents: write
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create missing releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash tools/create_releases.sh

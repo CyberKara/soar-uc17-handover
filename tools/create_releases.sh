@@ -1,33 +1,56 @@
 #!/usr/bin/env bash
-# Create one GitHub Release per connector version in this repo's history.
+# Create a GitHub Release for every connector package that does not have one.
 #
-# Each release is tagged at the commit that introduced that version's .tgz and
-# carries that exact file, read back out of git rather than rebuilt, so the
-# asset is byte-identical to what the repo has always held. Re-running is safe:
-# a version whose release already exists is skipped.
+# A connector version is a connectors/efficientip_ddi-v<version>.tgz that was
+# added to git. Each one gets a release tagged v<version>, at the commit that
+# added it, carrying that exact file read back out of git (never rebuilt), with
+# the commit message as notes plus the package's sha256. Re-running is safe: a
+# version that already has a release is skipped.
 #
-# Needs gh, logged in (locally) or with GH_TOKEN set (in Actions), and a clone
-# with full history. DRY_RUN=1 prints what would be created and touches nothing.
+# Usage: tools/create_releases.sh [<git revision range>]
+#   (no argument)  every package ever added -- a full backfill
+#   A..B           only packages added in that range -- what CI passes on a push,
+#                  so a release deleted on purpose is not quietly recreated
 #
-# v1.0.2, v1.0.7 and v1.0.9 are absent on purpose: they were never exported to
-# this repo, so there is no package to release.
+# Needs gh (logged in, or GH_TOKEN set) and a clone with full history and tags.
+# DRY_RUN=1 prints what would be created and touches nothing.
+#
+# Refuses to release a package whose filename version disagrees with the
+# app_version inside it: that file would be published under the wrong name.
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-# version  commit that first carried connectors/efficientip_ddi-v<version>.tgz
-RELEASES=(
-  "1.0.0  010f30aa1dd24d1bfb9137797c74083d8bedf0de"
-  "1.0.1  c9f985abcfdccb323817d08bb78a216424fe00c7"
-  "1.0.3  9ea4507d8b4fecc856b68bfd2b18d89ed8d01cbc"
-  "1.0.4  433349f226d33ac4abc9823398f1b70674252f0b"
-  "1.0.5  e9782d599d19df69b5ac52422b0eed71258815b9"
-  "1.0.6  b0d3aac1bb0467943197d5973841422d0863f230"
-  "1.0.8  88cf260a897e0abcd2a3462f844049d12100e413"
-  "1.0.10 472f291d57404f98c3c79319cf98bde4d9040c61"
-  "1.0.11 7f051043ac10dd15d775c0920d0f31ea2b44de29"
+range="${1:-}"
+pattern='connectors/efficientip_ddi-v*.tgz'
+
+# "<commit> <path>" for each package added in range, oldest first. --no-renames
+# keeps a moved file from being reported as a rename instead of an addition.
+added=()
+while read -r sha path; do
+  added+=("$sha $path")
+done < <(
+  git log --reverse --no-renames --diff-filter=A --name-only \
+    --format='commit %H' ${range:+"$range"} -- "$pattern" |
+    awk '/^commit /{c=$2; next} NF{print c, $0}'
 )
-LATEST="1.0.11"
+
+if [ "${#added[@]}" -eq 0 ]; then
+  echo "no new connector packages${range:+ in $range}"
+  exit 0
+fi
+
+# Only the highest version may claim "Latest". Compared against the versions
+# already tagged as well, so releasing an older line later cannot displace it.
+versions=()
+for entry in "${added[@]}"; do
+  path=${entry#* }
+  version=${path#connectors/efficientip_ddi-v}
+  versions+=("${version%.tgz}")
+done
+highest=$(
+  { printf '%s\n' "${versions[@]}"; git tag -l 'v*' | sed 's/^v//'; } | sort -V | tail -n 1
+)
 
 workdir=$(mktemp -d)
 trap 'rm -rf "$workdir"' EXIT
@@ -40,10 +63,13 @@ run() {
   fi
 }
 
-for entry in "${RELEASES[@]}"; do
-  read -r version sha <<<"$entry"
+for entry in "${added[@]}"; do
+  sha=${entry%% *}
+  path=${entry#* }
+  asset_name=${path#connectors/}
+  version=${asset_name#efficientip_ddi-v}
+  version=${version%.tgz}
   tag="v${version}"
-  asset_name="efficientip_ddi-v${version}.tgz"
   asset="$workdir/$asset_name"
 
   if [ "${DRY_RUN:-}" != "1" ] && gh release view "$tag" >/dev/null 2>&1; then
@@ -51,10 +77,17 @@ for entry in "${RELEASES[@]}"; do
     continue
   fi
 
-  # The commit must really hold this package; a wrong SHA here would publish
-  # some other version's file under this tag.
-  git cat-file -e "${sha}:connectors/${asset_name}"
-  git show "${sha}:connectors/${asset_name}" >"$asset"
+  git show "${sha}:${path}" >"$asset"
+
+  inner=$(
+    tar -xzOf "$asset" efficientip_ddi/efficientip_ddi.json |
+      python3 -c 'import json, sys; print(json.load(sys.stdin)["app_version"])'
+  )
+  if [ "$inner" != "$version" ]; then
+    echo "$tag: $asset_name says $version but the package's app_version is $inner -- not releasing" >&2
+    exit 1
+  fi
+
   checksum=$(sha256sum "$asset" | cut -d' ' -f1)
 
   notes="$workdir/notes-${version}.md"
@@ -69,7 +102,7 @@ for entry in "${RELEASES[@]}"; do
   } >"$notes"
 
   latest_flag="--latest=false"
-  [ "$version" = "$LATEST" ] && latest_flag="--latest"
+  [ "$version" = "$highest" ] && latest_flag="--latest"
 
   echo "$tag -> ${sha:0:7} ($asset_name, sha256 ${checksum:0:12})"
   [ "${DRY_RUN:-}" = "1" ] && sed 's/^/    | /' "$notes"

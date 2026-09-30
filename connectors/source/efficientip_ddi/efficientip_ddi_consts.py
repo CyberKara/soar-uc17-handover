@@ -69,6 +69,16 @@ MAX_RETRY_COUNT = 10
 DEFAULT_RETRY_BACKOFF = 2.0
 MAX_RETRY_BACKOFF = 30.0
 
+# Backend (SOLIDserver) credential headers, each carrying base64(value). These
+# are the names the APIM actually reads. Through v1.0.11 they were sent as
+# X-DDI-Username / X-DDI-Password, which the operator's own working curl does
+# not use, and on the target appliance (2026-09-30) that naming alone
+# reproduces HTTP 401 "The specified document is not valid JSON data" on every
+# call -- renaming just these two headers in the working curl was the whole
+# difference. See the README, "Auth model".
+DDI_USERNAME_HEADER = "X-IPM-Username"
+DDI_PASSWORD_HEADER = "X-IPM-Password"
+
 # Endpoints -- vendor-confirmed real on this org's APIM (see README.md)
 IP_ADDRESS_LIST_PATH = "/rest/ip_address_list"
 IP_BLOCK_SUBNET_LIST_PATH = "/rest/ip_block_subnet_list"

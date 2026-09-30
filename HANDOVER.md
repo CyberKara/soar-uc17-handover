@@ -1,6 +1,8 @@
 # UC17 — EfficientIP DDI Enrichment — Air-Gapped Handover Package
 
 Generated 2026-09-24 12:48 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
+Connector updated to v1.0.12 on 2026-09-30 by hand in this repo; the playbooks,
+assets template and everything else are unchanged from that export.
 
 This package is self-contained — everything needed to deploy this use case by hand
 in an environment with no network access back to this repo or to `soar8`.
@@ -11,7 +13,7 @@ in an environment with no network access back to this repo or to `soar8`.
 
 | Path | What |
 |------|------|
-| `connectors/` | Connector app package(s): efficientip_ddi-v1.0.11.tgz |
+| `connectors/` | Connector app package(s): efficientip_ddi-v1.0.12.tgz |
 | `connectors/source/` | Same connector(s), extracted — for reading, not for import |
 | `playbooks/*.tgz` (PBs) | efficientip_ddi_enrich, efficientip_ddi_action_test |
 | `playbooks/source/` | Same CFs/playbooks, extracted — for reading, not for import |
@@ -25,6 +27,8 @@ These apply only if this app is already installed on the target from a
 previous package. On a completely fresh target, skip to Install order.
 
 - **Which of these applies depends on what is already installed — check the Apps list first.** Open Apps and search for `EfficientIP`. If you see **exactly one** app (named `efficientip_ddi` / `EfficientIP DDI`), you installed the 2026-08-31 package or later: this one is a **normal in-place upgrade**. Install it over the existing app — same internal identifier — and your existing asset keeps working with every credential intact. **Do not delete anything and do not re-enter any credential.** If instead you see **two** apps (an `efficientip_ddi` and an `EfficientIP DDI (Classic)`), you are still on a package older than 2026-08-31, and the note below applies to you instead.
+
+- **Connector v1.0.12 fixes a constant HTTP 401 on Test Connectivity.** The connector sent the two SOLIDserver credential headers as `X-DDI-Username` / `X-DDI-Password`; the APIM reads `X-IPM-Username` / `X-IPM-Password`, and with the wrong names every call failed with HTTP 401 and the message "The specified document is not valid JSON data". It also fixes `get ip address`, which filtered on a column (`host_addr`) that does not exist on the appliance; it now uses `hostaddr`. This is a normal in-place upgrade: same app, same asset, no credential to re-enter, no playbook to re-import. Install it over the existing app. One thing to check on the asset: **`base_url` must include the APIM path prefix that comes before `/rest`** (for example `https://apim.example/prefix/segment`); the connector appends `/rest/<service>` to it.
 
 - **This package removes two connector actions: `get ip pool` and `list aliases`** (connector v1.0.11). The connector now calls only two SOLIDserver services: `ip_address_list` (`get ip address`) and `ip_block_subnet_list` (`list subnets`, `test connectivity`). After upgrading, any playbook that still calls a removed action fails at that step. That includes the `efficientip_ddi_enrich` and `efficientip_ddi_action_test` playbooks from any earlier package, so re-import both from this package so they replace the earlier versions. If you built playbooks of your own on `get ip pool` or `list aliases`, rework them before upgrading. Your asset and its credentials are not affected. The new `efficientip_ddi_enrich` also fixes its summary note: with packages from 2026-08-31 to 2026-09-09, hostname, subnet, space, MAC address and class came back empty. They are filled in now.
 

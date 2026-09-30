@@ -1,6 +1,8 @@
 # UC17 — EfficientIP DDI Enrichment — Paquet de transfert (déploiement air-gapped)
 
 Généré le 2026-09-24 12:48 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
+Connecteur mis à jour en v1.0.12 le 2026-09-30, à la main dans ce dépôt ; les playbooks,
+le modèle d'asset et le reste sont inchangés par rapport à cet export.
 
 Ce paquet est autonome — tout ce qu'il faut pour déployer ce cas d'usage manuellement
 dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
@@ -11,7 +13,7 @@ dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
 
 | Chemin | Contenu |
 |--------|---------|
-| `connectors/` | Paquet(s) applicatif(s) connecteur : efficientip_ddi-v1.0.11.tgz |
+| `connectors/` | Paquet(s) applicatif(s) connecteur : efficientip_ddi-v1.0.12.tgz |
 | `connectors/source/` | Même(s) connecteur(s), extrait(s) — pour lecture, pas pour import |
 | `playbooks/*.tgz` (PB) | efficientip_ddi_enrich, efficientip_ddi_action_test |
 | `playbooks/source/` | Mêmes CF/playbooks, extraits — pour lecture, pas pour import |
@@ -26,6 +28,8 @@ depuis un paquet précédent. Sur une cible vierge, passez à l'ordre
 d'installation.
 
 - **Ce qui s'applique dépend de ce qui est déjà installé — vérifiez d'abord la liste des applications.** Ouvrez Apps et recherchez `EfficientIP`. Si vous voyez **une seule** application (nommée `efficientip_ddi` / `EfficientIP DDI`), vous avez installé le paquet du 2026-08-31 ou un plus récent : celui-ci est une **mise à jour normale, sur place**. Installez-le par-dessus l'application existante — même identifiant interne — et votre actif (asset) existant continue de fonctionner avec tous ses identifiants. **Ne supprimez rien et ne ressaisissez aucun identifiant.** Si en revanche vous voyez **deux** applications (`efficientip_ddi` et `EfficientIP DDI (Classic)`), vous êtes encore sur un paquet antérieur au 2026-08-31, et c'est la note ci-dessous qui vous concerne.
+
+- **Le connecteur v1.0.12 corrige un HTTP 401 systématique sur Test Connectivity.** Le connecteur envoyait les deux en-têtes d'identifiants SOLIDserver sous les noms `X-DDI-Username` / `X-DDI-Password` ; l'APIM lit `X-IPM-Username` / `X-IPM-Password`, et avec les mauvais noms chaque appel échouait en HTTP 401 avec le message « The specified document is not valid JSON data ». Il corrige aussi `get ip address`, qui filtrait sur une colonne (`host_addr`) absente de l'appliance ; il utilise désormais `hostaddr`. C'est une mise à jour normale, sur place : même application, même actif (asset), aucun identifiant à ressaisir, aucun playbook à réimporter. Installez-le par-dessus l'application existante. Un point à vérifier sur l'actif : **`base_url` doit inclure le préfixe de chemin de l'APIM situé avant `/rest`** (par exemple `https://apim.exemple/prefixe/segment`) ; le connecteur y ajoute `/rest/<service>`.
 
 - **Ce paquet retire deux actions du connecteur : `get ip pool` et `list aliases`** (connecteur v1.0.11). Le connecteur n'appelle plus que deux services SOLIDserver : `ip_address_list` (`get ip address`) et `ip_block_subnet_list` (`list subnets`, `test connectivity`). Après la mise à jour, tout playbook qui appelle encore une action retirée échoue à cette étape. Cela inclut les playbooks `efficientip_ddi_enrich` et `efficientip_ddi_action_test` de tout paquet précédent : réimportez les deux depuis ce paquet pour qu'ils remplacent les versions précédentes. Si vous avez construit vos propres playbooks sur `get ip pool` ou `list aliases`, retravaillez-les avant la mise à jour. Votre actif (asset) et ses identifiants ne sont pas concernés. Le nouveau `efficientip_ddi_enrich` corrige aussi sa note de synthèse : avec les paquets du 2026-08-31 au 2026-09-09, le nom d'hôte, le sous-réseau, l'espace, l'adresse MAC et la classe revenaient vides. Ils sont désormais renseignés.
 

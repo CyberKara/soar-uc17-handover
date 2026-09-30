@@ -49,7 +49,13 @@
 # two handlers and their dispatch entries came out above _normalize_pem, so
 # 1106 -> 1023). Verified by reading the function: block_types delimiter
 # constants only, and zero base64 runs over 60 chars anywhere in the package.
-connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:1023
+# 2026-09-30 - repinned for v1.0.12 (backend-auth header names moved into the
+# consts module, hostaddr filter, rewritten Content-Type comment): 1023 -> 1029.
+# Verified by grep that the delimiter tuple is unchanged and still only the
+# marker strings. gitleaks itself is not installed where this edit was made, so
+# the pin has NOT been run through the scanner -- run it before the next push
+# to a public remote.
+connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:1029
 
 # False positive: SOAR's own VPE-generated node bookkeeping field, not a
 # credential. Every decision/filter block's condition gets a

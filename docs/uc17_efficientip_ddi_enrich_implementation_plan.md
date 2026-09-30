@@ -17,6 +17,37 @@
 > user). **Built + deployed + live-verified 2026-08-25 (later still)** — see
 > "Build + live-verify (2026-08-25)" below.
 
+## [!] CORRECTION 2026-09-30 — the constant 401 was the header names; `host_addr` was wrong (connector v1.0.12)
+
+**Read this before the dated sections below that say otherwise.** Two claims in
+this log are contradicted by a test on the target appliance itself, run from the
+operator's own working curl:
+
+1. **`X-DDI-Username` / `X-DDI-Password` are not the names the APIM reads.** The
+   working curl sends `x-ipm-username` / `x-ipm-password`. Renaming only those
+   two headers in it to `X-DDI-*` returns HTTP 401 `"The specified document is
+   not valid JSON data"` — the same message recorded on 2026-08-29, now on every
+   call including `test connectivity`. The `X-DDI-*` names were sent by every
+   connector version through v1.0.11; v1.0.12 sends `X-IPM-*`. This contradicts
+   the notes below saying the `X-DDI-*` layer was accepted on the real appliance
+   (2026-08-29) and the client bisect's curl rows (2026-09-02), which also sent
+   `X-DDI-*`. The record does not explain the disagreement, and this note does
+   not guess: what is established is the one-variable test above.
+2. **`host_addr` is not a column on the appliance**, `hostaddr` is. The same curl
+   filters on `hostaddr='<ip>'`; `host_addr` answers with a SOLIDserver SQL error
+   (`sql_error` 7). The "live-verified" of `host_addr` in the 2026-09-01 section
+   is the soar8 run against the mock, which was seeded with `host_addr` for that
+   change.
+
+Also recorded: the APIM publishes the REST services under a path prefix, which
+belongs in the asset's `base_url` (the operator's asset already has it), and the
+working curl sends `Accept: application/json` and `Cache-Control: no-cache` too,
+so neither header is a difference. The client-bisect and probe scripts in the
+handover now send `X-IPM-*` as well; before that their curl rows could not have
+reproduced a working request.
+
+Only the connector changed. No playbook was edited or rebuilt.
+
 ## Scope cut to two endpoints — connector v1.0.11 (2026-09-24)
 
 **User decision:** the connector keeps two endpoints only.

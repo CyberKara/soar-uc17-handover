@@ -1,0 +1,202 @@
+{
+  "blockly": false,
+  "blockly_xml": "<xml></xml>",
+  "category": "Investigation",
+  "coa": {
+    "data": {
+      "hash": "",
+      "edges": [
+        {
+          "id": "port_0_to_port_2",
+          "sourceNode": "0",
+          "sourcePort": "0_out",
+          "targetNode": "2",
+          "targetPort": "2_in"
+        },
+        {
+          "id": "port_2_to_port_3",
+          "sourceNode": "2",
+          "sourcePort": "2_out",
+          "targetNode": "3",
+          "targetPort": "3_in"
+        },
+        {
+          "id": "port_3_to_port_4",
+          "sourceNode": "3",
+          "sourcePort": "3_out",
+          "targetNode": "4",
+          "targetPort": "4_in"
+        },
+        {
+          "id": "port_4_to_port_5",
+          "sourceNode": "4",
+          "sourcePort": "4_out",
+          "targetNode": "5",
+          "targetPort": "5_in"
+        },
+        {
+          "id": "port_5_to_port_1",
+          "sourceNode": "5",
+          "sourcePort": "5_out",
+          "targetNode": "1",
+          "targetPort": "1_in"
+        }
+      ],
+      "nodes": {
+        "0": {
+          "x": 190,
+          "y": 0,
+          "id": "0",
+          "data": {
+            "advanced": {
+              "join": []
+            },
+            "functionName": "on_start",
+            "id": "0",
+            "type": "start"
+          },
+          "type": "start",
+          "errors": {},
+          "warnings": {}
+        },
+        "1": {
+          "x": 190,
+          "y": 750,
+          "id": "1",
+          "data": {
+            "advanced": {
+              "join": []
+            },
+            "functionId": 1,
+            "functionName": "on_finish",
+            "id": "1",
+            "type": "end"
+          },
+          "type": "end",
+          "errors": {},
+          "warnings": {},
+          "userCode": "    ################################################################################\n    ################################################################################\n\n    # This function is called after all actions are completed.\n    # summary of all the action and/or all details of actions\n    # can be collected here.\n\n    # summary_json = phantom.get_summary()\n    # if 'result' in summary_json:\n        # for action_result in summary_json['result']:\n            # if 'action_run_id' in action_result:\n                # action_results = phantom.get_action_results(action_run_id=action_result['action_run_id'], result_data=False, flatten=False)\n                # phantom.debug(action_results)\n\n    ################################################################################\n    ################################################################################\n"
+        },
+        "2": {
+          "x": 190,
+          "y": 150,
+          "id": "2",
+          "data": {
+            "advanced": {
+              "join": [],
+              "note": "Code block, not a native prompt: a native block needs its approver fixed at design time, but this playbook is launched by hand and must ask the launching analyst. A VPE save regenerates prompt blocks whole and would drop that. Calls phantom.prompt2 with callback read_ip, then returns.",
+              "customName": "ask ip",
+              "description": "Ask whoever launched the playbook to type the IP address to look up.",
+              "customNameId": 0
+            },
+            "functionId": 1,
+            "functionName": "ask_ip",
+            "inputParameters": [],
+            "outputVariables": [],
+            "id": "2",
+            "type": "code"
+          },
+          "type": "code",
+          "errors": {},
+          "warnings": {},
+          "userCode": "    ################################################################################\n    ################################################################################\n\n    # The prompt is raised from code, not from a native prompt block: a native\n    # block needs its approver fixed when the playbook is designed, but this\n    # playbook is launched by hand and must ask whoever launched it, and a VPE\n    # save regenerates prompt blocks whole. The callback continues the flow; the\n    # return below stops the generated call to read_ip from also running right\n    # away.\n    user = None\n    try:\n        user_id = phantom.get_effective_user()\n        user_url = phantom.build_phantom_rest_url(\"ph_user\", user_id)\n        user = phantom.requests.get(uri=user_url, verify=False).json().get(\"username\")\n    except Exception as e:\n        phantom.debug(\"Could not resolve the launching user: {}\".format(str(e)))\n    if not user:\n        user = container.get(\"owner_name\", None) or \"soar_local_admin\"\n    role = None\n    respond_in_mins = 30\n    message = \"\"\"**EfficientIP DDI lookup**\nContainer: {0}\n\nType the IPv4 or IPv6 address to look up in SOLIDserver.\"\"\"\n\n    parameters = [\n        \"container:name\",\n    ]\n\n    response_types = [\n        {\n            \"prompt\": \"IP address\",\n            \"options\": {\n                \"type\": \"message\",\n                \"required\": True,\n            },\n        },\n    ]\n\n    phantom.prompt2(container=container, user=user, role=role, message=message, respond_in_mins=respond_in_mins, name=\"ask_ip\", parameters=parameters, response_types=response_types, callback=read_ip)\n\n    return\n\n    ################################################################################\n    ################################################################################\n"
+        },
+        "3": {
+          "x": 190,
+          "y": 300,
+          "id": "3",
+          "data": {
+            "advanced": {
+              "join": [],
+              "note": "Reads via GET /rest/approval, not collect2 -- same LEGACY_CUSTOM_FUNCTION_RESULT bug documented for proofpoint_trap_acknowledge's process_comment. Stops the run with a note when the prompt expired or the answer is not an IP address.",
+              "customName": "read ip",
+              "description": "Read the analyst's answer and check it is an IP address.",
+              "customNameId": 0
+            },
+            "functionId": 2,
+            "functionName": "read_ip",
+            "inputParameters": [],
+            "outputVariables": [
+              "ip"
+            ],
+            "id": "3",
+            "type": "code"
+          },
+          "type": "code",
+          "errors": {},
+          "warnings": {},
+          "userCode": "    ################################################################################\n    ################################################################################\n\n    run_id = phantom.get_playbook_run_id_()\n\n    answer = \"\"\n    prompt_status = \"expired\"\n\n    try:\n        approval_url = phantom.build_phantom_rest_url(\"approval\") + \\\n            \"?_filter_playbook_run={}&_filter_name=\\\"ask_ip\\\"&sort=id&order=desc&page_size=1\".format(run_id)\n        approvals = phantom.requests.get(uri=approval_url, verify=False).json().get(\"data\") or []\n    except Exception as e:\n        phantom.error(\"Could not fetch approval record for playbook_run {}: {}\".format(run_id, str(e)))\n        approvals = []\n\n    if approvals:\n        approval = approvals[0]\n        responses = approval.get(\"responses\") or []\n        if approval.get(\"status\") == \"approved\" and responses and responses[0]:\n            answer = str(responses[0]).strip()\n            prompt_status = \"answered\"\n        else:\n            phantom.debug(\"Approval status '{}' for playbook_run {} -- treating as expired/no response\".format(approval.get(\"status\"), run_id))\n    else:\n        phantom.error(\"No approval record found for playbook_run {}\".format(run_id))\n\n    # One address only: a hostname, CIDR range or URL is refused here, before the\n    # child playbook and the SOLIDserver lookup are started.\n    import ipaddress\n\n    ip = None\n    problem = None\n    if prompt_status != \"answered\":\n        problem = \"No answer was given before the prompt expired.\"\n    else:\n        try:\n            ip = str(ipaddress.ip_address(answer))\n        except ValueError:\n            shown = answer[:100].replace(\"`\", \"'\")\n            problem = \"`{}` is not an IPv4 or IPv6 address. Type one address, not a hostname, CIDR range or URL.\".format(shown)\n\n    if problem:\n        phantom.add_note(\n            container=container,\n            note_type=\"general\",\n            title=\"EfficientIP DDI Lookup - not run\",\n            content=\"EfficientIP DDI lookup did not run. {}\".format(problem),\n            note_format=\"markdown\",\n        )\n        phantom.debug(\"EfficientIP DDI lookup stopped: {}\".format(problem))\n        return\n\n    read_ip__ip = ip\n\n    # Also saved as run data: run_enrich reads this key.\n    phantom.save_run_data(key=\"read_ip:ip\", value=json.dumps(read_ip__ip))\n\n    ################################################################################\n    ################################################################################\n"
+        },
+        "4": {
+          "x": 190,
+          "y": 450,
+          "id": "4",
+          "data": {
+            "advanced": {
+              "join": [],
+              "note": "Code block calling the child with phantom.playbook, the pattern tie_triage and the UC1 playbooks use for a data child with inputs. finish_lookup is the callback, so this run waits for the child.",
+              "customName": "run enrich",
+              "description": "Run efficientip_ddi_enrich on the IP, which looks it up and writes the enrichment note.",
+              "customNameId": 0
+            },
+            "functionId": 3,
+            "functionName": "run_enrich",
+            "inputParameters": [],
+            "outputVariables": [],
+            "id": "4",
+            "type": "code"
+          },
+          "type": "code",
+          "errors": {},
+          "warnings": {},
+          "userCode": "    ################################################################################\n    ################################################################################\n\n    ip = json.loads(phantom.get_run_data(key=\"read_ip:ip\") or '\"\"')\n\n    # efficientip_ddi_enrich is a data playbook with one input, ip. It looks the\n    # address up and writes the \"EfficientIP DDI Enrichment\" note itself. The\n    # callback makes this run wait for it; the return stops the generated call to\n    # finish_lookup from also running right away.\n    phantom.playbook(\n        playbook=\"local/efficientip_ddi_enrich\",\n        container=container,\n        name=\"run_enrich\",\n        inputs={\n            \"ip\": ip,\n        },\n        callback=finish_lookup,\n    )\n\n    return\n\n    ################################################################################\n    ################################################################################\n"
+        },
+        "5": {
+          "x": 190,
+          "y": 600,
+          "id": "5",
+          "data": {
+            "advanced": {
+              "join": [],
+              "note": "Placeholder callback so the child playbook runs synchronously. The child has already written the enrichment note.",
+              "customName": "finish lookup",
+              "description": "Callback of run_enrich: the child playbook has finished.",
+              "customNameId": 0
+            },
+            "functionId": 4,
+            "functionName": "finish_lookup",
+            "inputParameters": [],
+            "outputVariables": [],
+            "id": "5",
+            "type": "code"
+          },
+          "type": "code",
+          "errors": {},
+          "warnings": {},
+          "userCode": "    ################################################################################\n    ################################################################################\n\n    phantom.debug(\"EfficientIP DDI lookup finished\")\n\n    ################################################################################\n    ################################################################################\n"
+        }
+      },
+      "notes": "",
+      "description": "Automation playbook for label efficientip_ddi, launched by an analyst from a container (Playbooks > Run Playbook). Asks the analyst to type an IPv4 or IPv6 address, checks it, then runs efficientip_ddi_enrich on it, which looks the address up in SOLIDserver and writes the EfficientIP DDI Enrichment note. Inactive by default, so it never starts on its own. Stops with a note when the prompt expires or the answer is not an IP address.",
+      "globalCustomCode": "\n\n\n# Design notes (kept here because a VPE save replaces the module docstring):\n# EfficientIP DDI Lookup\n#\n# Automation playbook, label efficientip_ddi, launched by hand from a container.\n# efficientip_ddi_enrich is a data (input) playbook, which an analyst cannot\n# launch from a container, so this playbook is the entry point: it asks for the\n# IP, validates it and calls efficientip_ddi_enrich as a child, which does the\n# lookup and writes the note. Left inactive at import so it never starts on a\n# new container or artifact by itself.\n#\n# Trigger: Manual run by analyst\n"
+    },
+    "input_spec": [],
+    "output_spec": [],
+    "playbook_trigger": "artifact_created",
+    "playbook_type": "automation",
+    "python_version": "3.13",
+    "schema": "5.0.24",
+    "version": "8.6.0.530"
+  },
+  "create_time": "2026-09-30T00:00:00.000000+00:00",
+  "draft_mode": false,
+  "labels": [
+    "efficientip_ddi"
+  ],
+  "tags": [
+    "efficientip_ddi",
+    "investigation",
+    "enrichment",
+    "launcher"
+  ]
+}

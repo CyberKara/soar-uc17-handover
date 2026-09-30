@@ -1,304 +1,305 @@
 {
-    "blockly": false,
-    "blockly_xml": "<xml></xml>",
-    "category": "Investigation",
-    "coa": {
-        "data": {
-            "hash": "",
-            "edges": [
-                {
-                    "id": "port_0_to_port_2",
-                    "sourceNode": "0",
-                    "sourcePort": "0_out",
-                    "targetNode": "2",
-                    "targetPort": "2_in"
-                },
-                {
-                    "id": "port_0_to_port_4",
-                    "sourceNode": "0",
-                    "sourcePort": "0_out",
-                    "targetNode": "4",
-                    "targetPort": "4_in"
-                },
-                {
-                    "id": "port_0_to_port_7",
-                    "sourceNode": "0",
-                    "sourcePort": "0_out",
-                    "targetNode": "7",
-                    "targetPort": "7_in"
-                },
-                {
-                    "id": "port_2_to_port_3",
-                    "sourceNode": "2",
-                    "sourcePort": "2_out",
-                    "targetNode": "3",
-                    "targetPort": "3_in"
-                },
-                {
-                    "id": "port_3_to_port_1",
-                    "sourceNode": "3",
-                    "sourcePort": "3_out",
-                    "targetNode": "1",
-                    "targetPort": "1_in"
-                },
-                {
-                    "id": "port_4_to_port_6",
-                    "sourceNode": "4",
-                    "sourcePort": "4_out",
-                    "targetNode": "6",
-                    "targetPort": "6_in"
-                },
-                {
-                    "id": "port_6_to_port_1",
-                    "sourceNode": "6",
-                    "sourcePort": "6_out",
-                    "targetNode": "1",
-                    "targetPort": "1_in"
-                },
-                {
-                    "id": "port_7_to_port_8",
-                    "sourceNode": "7",
-                    "sourcePort": "7_out",
-                    "targetNode": "8",
-                    "targetPort": "8_in"
-                },
-                {
-                    "id": "port_8_to_port_1",
-                    "sourceNode": "8",
-                    "sourcePort": "8_out",
-                    "targetNode": "1",
-                    "targetPort": "1_in"
-                }
-            ],
-            "nodes": {
-                "0": {
-                    "x": 190,
-                    "y": 0,
-                    "id": "0",
-                    "data": {
-                        "id": "0",
-                        "type": "start",
-                        "advanced": {
-                            "join": []
-                        },
-                        "functionName": "on_start"
-                    },
-                    "type": "start",
-                    "errors": {}
-                },
-                "1": {
-                    "x": 190,
-                    "y": 1100,
-                    "id": "1",
-                    "data": {
-                        "id": "1",
-                        "type": "end",
-                        "advanced": {
-                            "join": []
-                        },
-                        "functionId": 1,
-                        "functionName": "on_finish"
-                    },
-                    "type": "end",
-                    "errors": {},
-                    "userCode": "\n"
-                },
-                "2": {
-                    "x": 0,
-                    "y": 150,
-                    "id": "2",
-                    "data": {
-                        "id": "2",
-                        "type": "action",
-                        "action": "test connectivity",
-                        "advanced": {
-                            "join": [],
-                            "note": "Smoke-test branch A of 3 -- see docs/usecases/uc17_efficientip_ddi_enrich_implementation_plan.md.",
-                            "customName": "run test connectivity",
-                            "description": "Exercise 'test connectivity' against the connector's mock asset.",
-                            "customNameId": 0
-                        },
-                        "connector": "EfficientIP DDI",
-                        "actionType": "test",
-                        "functionId": 1,
-                        "parameters": {},
-                        "connectorId": "33986f6c-2005-4c3a-aa8b-d7a83caa76d0",
-                        "functionName": "run_test_connectivity",
-                        "connectorConfigs": [
-                            "efficientip_ddi mock"
-                        ],
-                        "connectorVersion": "v1",
-                        "requiredParameters": []
-                    },
-                    "type": "action",
-                    "errors": {}
-                },
-                "3": {
-                    "x": 0,
-                    "y": 300,
-                    "id": "3",
-                    "data": {
-                        "id": "3",
-                        "type": "code",
-                        "advanced": {
-                            "join": [],
-                            "note": "Reads run_test_connectivity's own action_result and writes a note.",
-                            "customName": "note test connectivity",
-                            "description": "Write a pass/fail note for the test connectivity branch.",
-                            "customNameId": 0
-                        },
-                        "functionId": 2,
-                        "functionName": "note_test_connectivity",
-                        "inputParameters": [
-                            "run_test_connectivity:action_result.status",
-                            "run_test_connectivity:action_result.message"
-                        ],
-                        "outputVariables": []
-                    },
-                    "type": "code",
-                    "errors": {},
-                    "userCode": "    ################################################################################\n\n    result = phantom.collect2(\n        container=container,\n        datapath=[\n            \"run_test_connectivity:action_result.status\",\n            \"run_test_connectivity:action_result.message\",\n        ]\n    )\n    status, message = (result[0][0], result[0][1]) if result else (\"not run\", \"\")\n    mark = \"PASS\" if status == \"success\" else \"FAIL\"\n\n    phantom.add_note(\n        container=container,\n        note_type=\"general\",\n        title=\"efficientip_ddi action test - test connectivity - {}\".format(mark),\n        content=\"**test connectivity:** {}\\n\\n{}\".format(mark, message),\n    )\n\n    ################################################################################\n"
-                },
-                "4": {
-                    "x": 340,
-                    "y": 150,
-                    "id": "4",
-                    "data": {
-                        "id": "4",
-                        "type": "action",
-                        "action": "get ip address",
-                        "advanced": {
-                            "join": [],
-                            "note": "Smoke-test branch B of 3. Static test address 10.20.30.40 (mock seed record), so the found path is exercised.",
-                            "customName": "run get ip address",
-                            "description": "Exercise 'get ip address' against a known-good seed IP.",
-                            "customNameId": 0
-                        },
-                        "connector": "EfficientIP DDI",
-                        "actionType": "investigate",
-                        "functionId": 3,
-                        "parameters": {
-                            "address": "10.20.30.40"
-                        },
-                        "connectorId": "33986f6c-2005-4c3a-aa8b-d7a83caa76d0",
-                        "functionName": "run_get_ip_address",
-                        "connectorConfigs": [
-                            "efficientip_ddi mock"
-                        ],
-                        "connectorVersion": "v1",
-                        "requiredParameters": [
-                            {
-                                "field": "address",
-                                "default": "",
-                                "data_type": "string"
-                            }
-                        ]
-                    },
-                    "type": "action",
-                    "errors": {}
-                },
-                "6": {
-                    "x": 340,
-                    "y": 450,
-                    "id": "6",
-                    "data": {
-                        "id": "6",
-                        "type": "code",
-                        "advanced": {
-                            "join": [],
-                            "note": "Reads run_get_ip_address's own action_result and writes a note.",
-                            "customName": "note get ip address",
-                            "description": "Write a pass/fail note for the get ip address branch.",
-                            "customNameId": 0
-                        },
-                        "functionId": 5,
-                        "functionName": "note_get_ip_address",
-                        "inputParameters": [
-                            "run_get_ip_address:action_result.status",
-                            "run_get_ip_address:action_result.message"
-                        ],
-                        "outputVariables": []
-                    },
-                    "type": "code",
-                    "errors": {},
-                    "userCode": "    ################################################################################\n\n    result = phantom.collect2(\n        container=container,\n        datapath=[\n            \"run_get_ip_address:action_result.status\",\n            \"run_get_ip_address:action_result.message\",\n        ]\n    )\n    status, message = (result[0][0], result[0][1]) if result else (\"not run\", \"\")\n    mark = \"PASS\" if status == \"success\" else \"FAIL\"\n\n    phantom.add_note(\n        container=container,\n        note_type=\"general\",\n        title=\"efficientip_ddi action test - get ip address - {}\".format(mark),\n        content=\"**get ip address:** {}\\n\\n{}\".format(mark, message),\n    )\n\n    ################################################################################\n"
-                },
-                "7": {
-                    "x": 680,
-                    "y": 150,
-                    "id": "7",
-                    "data": {
-                        "id": "7",
-                        "type": "action",
-                        "action": "list subnets",
-                        "advanced": {
-                            "join": [],
-                            "note": "Smoke-test branch C of 3. Static test name CORP_LAN-USERS (mock seed; subnet names are labels, not CIDRs).",
-                            "customName": "run list subnets",
-                            "description": "Exercise 'list subnets' against a known-good seed subnet name.",
-                            "customNameId": 0
-                        },
-                        "connector": "EfficientIP DDI",
-                        "actionType": "investigate",
-                        "functionId": 6,
-                        "parameters": {
-                            "subnet_name": "CORP_LAN-USERS"
-                        },
-                        "connectorId": "33986f6c-2005-4c3a-aa8b-d7a83caa76d0",
-                        "functionName": "run_list_subnets",
-                        "connectorConfigs": [
-                            "efficientip_ddi mock"
-                        ],
-                        "connectorVersion": "v1",
-                        "requiredParameters": []
-                    },
-                    "type": "action",
-                    "errors": {}
-                },
-                "8": {
-                    "x": 680,
-                    "y": 300,
-                    "id": "8",
-                    "data": {
-                        "id": "8",
-                        "type": "code",
-                        "advanced": {
-                            "join": [],
-                            "note": "Reads run_list_subnets's own action_result and writes a note.",
-                            "customName": "note list subnets",
-                            "description": "Write a pass/fail note for the list subnets branch.",
-                            "customNameId": 0
-                        },
-                        "functionId": 7,
-                        "functionName": "note_list_subnets",
-                        "inputParameters": [
-                            "run_list_subnets:action_result.status",
-                            "run_list_subnets:action_result.message"
-                        ],
-                        "outputVariables": []
-                    },
-                    "type": "code",
-                    "errors": {},
-                    "userCode": "    ################################################################################\n\n    result = phantom.collect2(\n        container=container,\n        datapath=[\n            \"run_list_subnets:action_result.status\",\n            \"run_list_subnets:action_result.message\",\n        ]\n    )\n    status, message = (result[0][0], result[0][1]) if result else (\"not run\", \"\")\n    mark = \"PASS\" if status == \"success\" else \"FAIL\"\n\n    phantom.add_note(\n        container=container,\n        note_type=\"general\",\n        title=\"efficientip_ddi action test - list subnets - {}\".format(mark),\n        content=\"**list subnets:** {}\\n\\n{}\".format(mark, message),\n    )\n\n    ################################################################################\n"
-                }
-            },
-            "notes": "",
-            "description": "Diagnostic Data playbook exercising all 3 efficientip_ddi actions (test connectivity, get ip address, list subnets) against known-good mock seed values, in 3 independent parallel branches, each writing its own pass/fail note. Built after the SOAR App Debugger view was found to be unreliable for SDK apps (see memory project-soar85-app-debugger-sdk-action-not-found) -- gives a repeatable way to validate the connector through the real action_run dispatch path."
+  "blockly": false,
+  "blockly_xml": "<xml></xml>",
+  "category": "Investigation",
+  "coa": {
+    "data": {
+      "description": "Diagnostic automation playbook, launched by hand from a container with label efficientip_ddi, exercising all 3 efficientip_ddi actions (test connectivity, get ip address, list subnets) against known-good mock seed values, in 3 independent parallel branches, each writing its own pass/fail note. Built after the SOAR App Debugger view was found to be unreliable for SDK apps (see memory project-soar85-app-debugger-sdk-action-not-found) -- gives a repeatable way to validate the connector through the real action_run dispatch path.",
+      "edges": [
+        {
+          "id": "port_0_to_port_2",
+          "sourceNode": "0",
+          "sourcePort": "0_out",
+          "targetNode": "2",
+          "targetPort": "2_in"
         },
-        "input_spec": [],
-        "output_spec": [],
-        "playbook_type": "data",
-        "python_version": "3.13",
-        "schema": "5.0.5",
-        "version": "8.5.0.100"
+        {
+          "id": "port_0_to_port_4",
+          "sourceNode": "0",
+          "sourcePort": "0_out",
+          "targetNode": "4",
+          "targetPort": "4_in"
+        },
+        {
+          "id": "port_0_to_port_7",
+          "sourceNode": "0",
+          "sourcePort": "0_out",
+          "targetNode": "7",
+          "targetPort": "7_in"
+        },
+        {
+          "id": "port_2_to_port_3",
+          "sourceNode": "2",
+          "sourcePort": "2_out",
+          "targetNode": "3",
+          "targetPort": "3_in"
+        },
+        {
+          "id": "port_3_to_port_1",
+          "sourceNode": "3",
+          "sourcePort": "3_out",
+          "targetNode": "1",
+          "targetPort": "1_in"
+        },
+        {
+          "id": "port_4_to_port_6",
+          "sourceNode": "4",
+          "sourcePort": "4_out",
+          "targetNode": "6",
+          "targetPort": "6_in"
+        },
+        {
+          "id": "port_6_to_port_1",
+          "sourceNode": "6",
+          "sourcePort": "6_out",
+          "targetNode": "1",
+          "targetPort": "1_in"
+        },
+        {
+          "id": "port_7_to_port_8",
+          "sourceNode": "7",
+          "sourcePort": "7_out",
+          "targetNode": "8",
+          "targetPort": "8_in"
+        },
+        {
+          "id": "port_8_to_port_1",
+          "sourceNode": "8",
+          "sourcePort": "8_out",
+          "targetNode": "1",
+          "targetPort": "1_in"
+        }
+      ],
+      "hash": "",
+      "nodes": {
+        "0": {
+          "id": "0",
+          "type": "start",
+          "x": 190,
+          "y": 0,
+          "errors": {},
+          "data": {
+            "advanced": {
+              "join": []
+            },
+            "functionName": "on_start",
+            "id": "0",
+            "type": "start"
+          }
+        },
+        "1": {
+          "id": "1",
+          "type": "end",
+          "x": 190,
+          "y": 1100,
+          "errors": {},
+          "userCode": "\n",
+          "data": {
+            "advanced": {
+              "join": []
+            },
+            "functionId": 1,
+            "functionName": "on_finish",
+            "id": "1",
+            "type": "end"
+          }
+        },
+        "2": {
+          "id": "2",
+          "type": "action",
+          "x": 0,
+          "y": 150,
+          "errors": {},
+          "data": {
+            "type": "action",
+            "action": "test connectivity",
+            "actionType": "test",
+            "connector": "EfficientIP DDI",
+            "connectorId": "33986f6c-2005-4c3a-aa8b-d7a83caa76d0",
+            "connectorConfigs": [
+              "efficientip_ddi mock"
+            ],
+            "connectorVersion": "v1",
+            "functionId": 1,
+            "functionName": "run_test_connectivity",
+            "id": "2",
+            "parameters": {},
+            "requiredParameters": [],
+            "advanced": {
+              "customName": "run test connectivity",
+              "customNameId": 0,
+              "description": "Exercise 'test connectivity' against the connector's mock asset.",
+              "join": [],
+              "note": "Smoke-test branch A of 3 -- see docs/usecases/uc17_efficientip_ddi_enrich_implementation_plan.md."
+            }
+          }
+        },
+        "3": {
+          "id": "3",
+          "type": "code",
+          "x": 0,
+          "y": 300,
+          "errors": {},
+          "userCode": "    ################################################################################\n\n    result = phantom.collect2(\n        container=container,\n        datapath=[\n            \"run_test_connectivity:action_result.status\",\n            \"run_test_connectivity:action_result.message\",\n        ]\n    )\n    status, message = (result[0][0], result[0][1]) if result else (\"not run\", \"\")\n    mark = \"PASS\" if status == \"success\" else \"FAIL\"\n\n    phantom.add_note(\n        container=container,\n        note_type=\"general\",\n        title=\"efficientip_ddi action test - test connectivity - {}\".format(mark),\n        content=\"**test connectivity:** {}\\n\\n{}\".format(mark, message),\n    )\n\n    ################################################################################\n",
+          "data": {
+            "type": "code",
+            "functionId": 2,
+            "functionName": "note_test_connectivity",
+            "id": "3",
+            "inputParameters": [
+              "run_test_connectivity:action_result.status",
+              "run_test_connectivity:action_result.message"
+            ],
+            "outputVariables": [],
+            "advanced": {
+              "customName": "note test connectivity",
+              "customNameId": 0,
+              "description": "Write a pass/fail note for the test connectivity branch.",
+              "join": [],
+              "note": "Reads run_test_connectivity's own action_result and writes a note."
+            }
+          }
+        },
+        "4": {
+          "id": "4",
+          "type": "action",
+          "x": 340,
+          "y": 150,
+          "errors": {},
+          "data": {
+            "type": "action",
+            "action": "get ip address",
+            "actionType": "investigate",
+            "connector": "EfficientIP DDI",
+            "connectorId": "33986f6c-2005-4c3a-aa8b-d7a83caa76d0",
+            "connectorConfigs": [
+              "efficientip_ddi mock"
+            ],
+            "connectorVersion": "v1",
+            "functionId": 3,
+            "functionName": "run_get_ip_address",
+            "id": "4",
+            "parameters": {
+              "address": "10.20.30.40"
+            },
+            "requiredParameters": [
+              {
+                "field": "address",
+                "default": "",
+                "data_type": "string"
+              }
+            ],
+            "advanced": {
+              "customName": "run get ip address",
+              "customNameId": 0,
+              "description": "Exercise 'get ip address' against a known-good seed IP.",
+              "join": [],
+              "note": "Smoke-test branch B of 3. Static test address 10.20.30.40 (mock seed record), so the found path is exercised."
+            }
+          }
+        },
+        "6": {
+          "id": "6",
+          "type": "code",
+          "x": 340,
+          "y": 450,
+          "errors": {},
+          "userCode": "    ################################################################################\n\n    result = phantom.collect2(\n        container=container,\n        datapath=[\n            \"run_get_ip_address:action_result.status\",\n            \"run_get_ip_address:action_result.message\",\n        ]\n    )\n    status, message = (result[0][0], result[0][1]) if result else (\"not run\", \"\")\n    mark = \"PASS\" if status == \"success\" else \"FAIL\"\n\n    phantom.add_note(\n        container=container,\n        note_type=\"general\",\n        title=\"efficientip_ddi action test - get ip address - {}\".format(mark),\n        content=\"**get ip address:** {}\\n\\n{}\".format(mark, message),\n    )\n\n    ################################################################################\n",
+          "data": {
+            "type": "code",
+            "functionId": 5,
+            "functionName": "note_get_ip_address",
+            "id": "6",
+            "inputParameters": [
+              "run_get_ip_address:action_result.status",
+              "run_get_ip_address:action_result.message"
+            ],
+            "outputVariables": [],
+            "advanced": {
+              "customName": "note get ip address",
+              "customNameId": 0,
+              "description": "Write a pass/fail note for the get ip address branch.",
+              "join": [],
+              "note": "Reads run_get_ip_address's own action_result and writes a note."
+            }
+          }
+        },
+        "7": {
+          "id": "7",
+          "type": "action",
+          "x": 680,
+          "y": 150,
+          "errors": {},
+          "data": {
+            "type": "action",
+            "action": "list subnets",
+            "actionType": "investigate",
+            "connector": "EfficientIP DDI",
+            "connectorId": "33986f6c-2005-4c3a-aa8b-d7a83caa76d0",
+            "connectorConfigs": [
+              "efficientip_ddi mock"
+            ],
+            "connectorVersion": "v1",
+            "functionId": 6,
+            "functionName": "run_list_subnets",
+            "id": "7",
+            "parameters": {
+              "subnet_name": "CORP_LAN-USERS"
+            },
+            "requiredParameters": [],
+            "advanced": {
+              "customName": "run list subnets",
+              "customNameId": 0,
+              "description": "Exercise 'list subnets' against a known-good seed subnet name.",
+              "join": [],
+              "note": "Smoke-test branch C of 3. Static test name CORP_LAN-USERS (mock seed; subnet names are labels, not CIDRs)."
+            }
+          }
+        },
+        "8": {
+          "id": "8",
+          "type": "code",
+          "x": 680,
+          "y": 300,
+          "errors": {},
+          "userCode": "    ################################################################################\n\n    result = phantom.collect2(\n        container=container,\n        datapath=[\n            \"run_list_subnets:action_result.status\",\n            \"run_list_subnets:action_result.message\",\n        ]\n    )\n    status, message = (result[0][0], result[0][1]) if result else (\"not run\", \"\")\n    mark = \"PASS\" if status == \"success\" else \"FAIL\"\n\n    phantom.add_note(\n        container=container,\n        note_type=\"general\",\n        title=\"efficientip_ddi action test - list subnets - {}\".format(mark),\n        content=\"**list subnets:** {}\\n\\n{}\".format(mark, message),\n    )\n\n    ################################################################################\n",
+          "data": {
+            "type": "code",
+            "functionId": 7,
+            "functionName": "note_list_subnets",
+            "id": "8",
+            "inputParameters": [
+              "run_list_subnets:action_result.status",
+              "run_list_subnets:action_result.message"
+            ],
+            "outputVariables": [],
+            "advanced": {
+              "customName": "note list subnets",
+              "customNameId": 0,
+              "description": "Write a pass/fail note for the list subnets branch.",
+              "join": [],
+              "note": "Reads run_list_subnets's own action_result and writes a note."
+            }
+          }
+        }
+      },
+      "notes": ""
     },
-    "create_time": "2026-09-24T12:42:52.802091Z",
-    "draft_mode": false,
-    "labels": [
-        "events"
-    ],
-    "tags": [
-        "efficientip_ddi",
-        "diagnostic"
-    ]
+    "input_spec": [],
+    "output_spec": [],
+    "playbook_trigger": "artifact_created",
+    "playbook_type": "automation",
+    "python_version": "3.13",
+    "schema": "5.0.5",
+    "version": "8.5.0.100"
+  },
+  "create_time": "2026-08-25T00:00:00.000000+00:00",
+  "draft_mode": false,
+  "labels": [
+    "efficientip_ddi"
+  ],
+  "tags": [
+    "efficientip_ddi",
+    "diagnostic"
+  ]
 }

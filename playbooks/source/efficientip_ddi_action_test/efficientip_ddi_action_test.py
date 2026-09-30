@@ -1,7 +1,7 @@
 """
 EfficientIP DDI Action Test (diagnostic)
 
-Data playbook exercising all 3 efficientip_ddi actions against known-good
+Automation playbook exercising all 3 efficientip_ddi actions against known-good
 mock seed values, in 3 independent parallel branches, each writing its own
 pass/fail note. Built after the SOAR App Debugger's "view app" code/trigger-
 action panel was found to always report "Action X not found" for SDK-based
@@ -10,7 +10,10 @@ project-soar85-app-debugger-sdk-action-not-found) -- this playbook exercises
 the real action_run dispatch path instead, the same one playbooks/asset
 Test Connectivity/container runs actually use.
 
-Trigger: none -- manually launched against any container.
+Trigger: manual -- launched by an analyst from a container with label
+         efficientip_ddi (Playbooks > Run Playbook). An automation playbook, left
+         inactive at import so it never starts by itself: an input (data)
+         playbook cannot be launched from a container.
 Input:   none
 Output:  none (results are written as 3 container notes, one per branch)
 """

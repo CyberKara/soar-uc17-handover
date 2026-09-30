@@ -78,8 +78,8 @@ AUTH = {
         _b64("{}:{}".format(_env("DDI_CLIENT_ID", required=True),
                             _env("DDI_CLIENT_SECRET", required=True)))
     ),
-    "X-DDI-Username": _b64(_env("DDI_USER", required=True)),
-    "X-DDI-Password": _b64(_env("DDI_PASS", required=True)),
+    "X-IPM-Username": _b64(_env("DDI_USER", required=True)),
+    "X-IPM-Password": _b64(_env("DDI_PASS", required=True)),
 }
 
 # What requests puts on the wire by default, spelled out so curl can wear it.

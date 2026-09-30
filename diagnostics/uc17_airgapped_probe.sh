@@ -40,7 +40,7 @@ probe() {
   local label="$1" path="$2" body code
   body=$(curl -s --max-time 30 -w '\n%{http_code}' "${CA_ARG[@]}" \
           --cert "$DDI_CERT" --key "$DDI_KEY" \
-          -H "Authorization: Basic $B" -H "X-DDI-Username: $U" -H "X-DDI-Password: $P" \
+          -H "Authorization: Basic $B" -H "X-IPM-Username: $U" -H "X-IPM-Password: $P" \
           "${DDI_BASE}${path}" 2>&1)
   code=$(printf '%s' "$body" | tail -n1)
   body=$(printf '%s' "$body" | sed '$d')
@@ -71,7 +71,7 @@ probe_hdr() {
   local label="$1" path="$2" hdr="$3" body code
   body=$(curl -s --max-time 30 -w '\n%{http_code}' "${CA_ARG[@]}" \
           --cert "$DDI_CERT" --key "$DDI_KEY" \
-          -H "Authorization: Basic $B" -H "X-DDI-Username: $U" -H "X-DDI-Password: $P" \
+          -H "Authorization: Basic $B" -H "X-IPM-Username: $U" -H "X-IPM-Password: $P" \
           -H "$hdr" \
           "${DDI_BASE}${path}" 2>&1)
   code=$(printf '%s' "$body" | tail -n1)
@@ -89,7 +89,7 @@ probe_encoded() {
   local label="$1" path="$2" where="$3" lim="$4" body code
   body=$(curl -s --max-time 30 -w '\n%{http_code}' -G "${CA_ARG[@]}" \
           --cert "$DDI_CERT" --key "$DDI_KEY" \
-          -H "Authorization: Basic $B" -H "X-DDI-Username: $U" -H "X-DDI-Password: $P" \
+          -H "Authorization: Basic $B" -H "X-IPM-Username: $U" -H "X-IPM-Password: $P" \
           --data-urlencode "WHERE=$where" --data-urlencode "limit=$lim" \
           "${DDI_BASE}${path}" 2>&1)
   code=$(printf '%s' "$body" | tail -n1)

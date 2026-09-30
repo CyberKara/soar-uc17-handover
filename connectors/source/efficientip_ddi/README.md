@@ -31,21 +31,44 @@ ______________________________________________________________________
 2. **`Authorization: Basic base64(client_id:client_secret)`** — the APIM-level
    app credential. No OAuth token exchange; the header is sent directly on every
    call, nothing to cache or refresh.
-3. **`X-DDI-Username` / `X-DDI-Password`** — forwarded by APIM to SOLIDserver's
+3. **`X-IPM-Username` / `X-IPM-Password`** — forwarded by APIM to SOLIDserver's
    own backend auth. Each value is base64-encoded **independently**
    (`base64(ddi_username)`, `base64(ddi_password)`) — not combined like the Basic
    Auth layer, not folded into it.
 
-Confirmed against the real APIM by curl (2026-08-25) and end-to-end on the real
-appliance (2026-08-29).
+   **The header names matter.** Through v1.0.11 these were sent as
+   `X-DDI-Username` / `X-DDI-Password`. On the target appliance (operator's own
+   test, 2026-09-30) that naming alone makes every call answer **HTTP 401 with
+   `"message": "The specified document is not valid JSON data"`**: the operator's
+   working curl sent `x-ipm-username` / `x-ipm-password`, and renaming only those
+   two headers in it to `X-DDI-*` reproduced the 401 exactly. v1.0.12 sends the
+   `X-IPM-*` names. The asset fields keep their `ddi_*` names.
+
+Earlier notes here said the `X-DDI-*` names were confirmed against the real APIM
+(2026-08-25) and end-to-end on the real appliance (2026-08-29). The 2026-09-30
+test above contradicts that for the target appliance, and this README cannot say
+which is right for any other APIM: if a deployment ever needs different names,
+they are the two constants `DDI_USERNAME_HEADER` / `DDI_PASSWORD_HEADER` in
+`efficientip_ddi_consts.py`.
 
 ## Endpoint convention
 
-Flat service names under `/rest/`, `WHERE=<field>='<value>'` filtering.
+Flat service names under `/rest/`, `WHERE=<field>='<value>'` filtering. The
+APIM may publish them under its own path prefix
+(`https://<apim>/<prefix>/rest/ip_address_list`): put everything before `/rest`
+in the asset's `base_url`, and the connector appends `/rest/<service>`. That
+works on the target appliance, where the operator's working curl goes through a
+two-segment prefix.
+
 Addresses are filterable **two ways**, as a sibling pair of columns:
-`host_addr` takes the dotted form and `ip_addr` takes zero-padded hex. Both are
-real. This connector uses **`host_addr`** (confirmed on the real appliance
-2026-09-01), so no encoding step is needed on the way in. The hex column still
+`hostaddr` takes the dotted form and `ip_addr` takes zero-padded hex. This
+connector uses **`hostaddr`** (no underscore), confirmed by the operator's own
+working curl on the target appliance, 2026-09-30, so no encoding step is needed
+on the way in. **`host_addr` (with an underscore) is not a column there**: it
+answers with a SOLIDserver SQL error (`sql_error` 7). Through v1.0.11 the
+connector used `host_addr`, and an earlier README called it confirmed on the
+real appliance. The only test of it on record in the plan is the soar8 run
+against the mock, which had been seeded with that name. The hex column still
 matters for anything that has to *range*-compare addresses — see the note under
 `list subnets` filters. The user has directly observed `/rest/ip_address_list`,
 `/rest/ip_alias_list/ip_id/{ip_id}`, `/rest/dns_zone_list`, `/rest/ip_pool_list`
@@ -75,7 +98,7 @@ unbounded scan and time out server-side. So a bound always goes on the wire:
 | Action | Type | Parameters | Notes |
 |---|---|---|---|
 | `test connectivity` | test | — | `GET /rest/ip_block_subnet_list?limit=1` |
-| `get ip address` | investigate | `address` (req), `limit` (default 1) | `GET /rest/ip_address_list?WHERE=host_addr='<dotted ip>'` |
+| `get ip address` | investigate | `address` (req), `limit` (default 1) | `GET /rest/ip_address_list?WHERE=hostaddr='<dotted ip>'` |
 | `list subnets` | investigate | exactly one of `subnet_name` / `subnet_id` / `parent_subnet_name` / `site_name`; `limit` (default 1) | `GET /rest/ip_block_subnet_list` |
 
 Two endpoints only, by user decision 2026-09-24: `ip_block_subnet_list` and
@@ -122,14 +145,14 @@ the record comes back under `name`. That mapping lives in
 
 | Field | Required | Type | Notes |
 |---|---|---|---|
-| `base_url` | Yes | string | APIM gateway base URL, e.g. `https://apim.internal.example` |
+| `base_url` | Yes | string | APIM gateway base URL **including any APIM path prefix before `/rest`**, e.g. `https://apim.internal.example/some/prefix` |
 | `client_id` | Yes | string | APIM app client ID (Basic Auth username) |
 | `client_secret` | Yes | password | APIM app client secret (Basic Auth password) |
-| `ddi_username` | Yes | string | SOLIDserver backend username, sent via `X-DDI-Username` |
-| `ddi_password` | Yes | password | SOLIDserver backend password, sent via `X-DDI-Password` |
+| `ddi_username` | Yes | string | SOLIDserver backend username, sent via `X-IPM-Username` |
+| `ddi_password` | Yes | password | SOLIDserver backend password, sent via `X-IPM-Password` |
 | `client_cert` | Yes | string | PEM client certificate for mTLS |
 | `client_key` | Yes | password | PEM private key matching `client_cert` |
-| `client_ca` | No | string | PEM CA bundle to verify APIM's server cert; blank uses system CAs |
+| `client_ca` | No | string | PEM CA bundle to verify APIM's server cert. Blank uses the `requests` library's own CA bundle, or the file named by `REQUESTS_CA_BUNDLE` / `CURL_CA_BUNDLE` when one of those is set. It does not read the OS trust store. |
 | `verify_ssl` | No (default `true`) | boolean | |
 | `retry_count` | No (default `3`) | numeric | Total attempts for a request answered with HTTP 401. `1` disables retrying. Clamped to 1–10. |
 | `retry_backoff` | No (default `2`) | numeric | Base seconds between 401 retries; the wait grows linearly (1x, 2x, 3x). Clamped to 0–30. |
@@ -276,6 +299,15 @@ target):
 cd soar8/migration/mock-backend && ./mock_start.sh ddi
 ```
 
+**v1.0.12 and the mock.** The connector now sends `X-IPM-Username` /
+`X-IPM-Password` and filters `get ip address` on `hostaddr`. The mock and the
+unit suite live outside this package and were **not** changed with it. Until the
+mock reads the `X-IPM-*` names (it read `X-DDI-*`) and its `ip_address_list`
+filters on `hostaddr` (it was seeded with `host_addr`), Test Connectivity against
+the mock answers HTTP 401 and `get ip address` fails. The same two names are
+pinned in the unit suite, so those tests need the same update, and so does the
+source repo this package is exported from, or its next export reverts this fix.
+
 Point the asset at `https://<mock-host>:8447` — **never** `127.0.0.1`/`localhost`,
 the mock runs cross-host on the ansible controller — with
 `client_cert`/`client_key` at `./certs/client.pem` / `./certs/client-key.pem`,
@@ -323,9 +355,10 @@ also accept `name`.
   differently-named `ip_subnet_list`.
 - **Range filters on `list subnets`** — designed, deliberately not built, behind
   three read-only appliance probes written out in the UC17 plan.
-- Whether the APIM proxies `/rest/*` verbatim or under its own prefix (fold it
-  into `base_url` if so).
-- **IPv6 filtering** — `host_addr` is confirmed for IPv4 only. The connector
+- ~~Whether the APIM proxies `/rest/*` verbatim or under its own prefix.~~
+  Answered 2026-09-30 for the target appliance: under a prefix, which goes in
+  `base_url`.
+- **IPv6 filtering** — `hostaddr` is confirmed for IPv4 only. The connector
   normalises IPv6 to its compressed form (`2001:0db8::0001` → `2001:db8::1`);
   whether the appliance stores that form or the expanded one is unverified.
 - A `list subnets` 401 seen on the real appliance (2026-08-29) is **unexplained**.
@@ -336,6 +369,43 @@ also accept `name`.
   Percent-encoding of the `WHERE` clause and the `limit` parameter are both
   ruled out, and the `403 = bad request` mapping rules out every remaining
   query-shaped explanation.
+
+## v1.0.12 (2026-09-30) — backend-auth header names, `hostaddr`
+
+Found on the target appliance, from the operator's own working curl, which
+differs from the connector in three ways. Two were the fault; one was cleared.
+
+| Difference | Verdict | Evidence |
+|---|---|---|
+| Backend-auth headers `x-ipm-username` / `x-ipm-password` vs the connector's `X-DDI-Username` / `X-DDI-Password` | **The cause of the constant 401.** Fixed. | The operator renamed only those two headers in the working curl to `X-DDI-*` and got HTTP 401 `"The specified document is not valid JSON data"`, the exact message the connector showed. |
+| `WHERE=hostaddr=…` vs the connector's `host_addr` | **Also wrong.** Fixed. | `host_addr` returns a SOLIDserver SQL error (`sql_error` 7) on that appliance. |
+| URL prefix `/<seg>/<seg>/rest/…` | Not a fault. | The asset's `base_url` already carried the prefix. Now documented. |
+
+Also cleared by the same curl: `Accept: application/json` and
+`Cache-Control: no-cache` are sent by it too, so neither is a difference.
+
+What changed:
+
+- `X-DDI-Username` / `X-DDI-Password` → `X-IPM-Username` / `X-IPM-Password`,
+  defined once as `DDI_USERNAME_HEADER` / `DDI_PASSWORD_HEADER` in the consts
+  module, and used by the request builder, the debug-log redaction, and the
+  curl emitter. **The redaction list moved with them**: without that, the debug
+  log would have printed the two credentials in clear.
+- `get ip address` filters on `hostaddr`.
+- The two diagnostics scripts send the `X-IPM-*` names. Before this, their curl
+  rows would have failed the same way the connector did and would not have
+  reproduced a working request.
+- Comment and README corrections: the `Content-Type` comment in
+  `_make_rest_call` blamed a header that is not sent and was already exonerated;
+  the `client_ca` row claimed "system CAs".
+
+Unchanged: every action, parameter, output field and asset field. `efficientip_ddi_enrich`
+and `efficientip_ddi_action_test` need no re-import, and an in-place upgrade keeps the asset.
+
+Not verified against the real appliance: this was checked against a local mTLS
+stand-in built to behave as the operator's tests showed (401 without the `X-IPM-*`
+headers, SQL error on `host_addr`). It shows the code sends what the working curl
+sends; the appliance's own answer is the operator's Test Connectivity.
 
 ## v1.0.11 (2026-09-24) — scope cut to two endpoints
 

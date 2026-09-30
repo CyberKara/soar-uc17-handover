@@ -10,8 +10,8 @@
     "logo_dark": "logo_dark.svg",
     "publisher": "Ted",
     "license": "Copyright (c) 2026",
-    "app_version": "1.0.11",
-    "utctime_updated": "2026-09-24T12:30:04.880594Z",
+    "app_version": "1.0.12",
+    "utctime_updated": "2026-09-30T19:53:56.000000Z",
     "package_name": "phantom_efficientip_ddi",
     "main_module": "efficientip_ddi_connector.py",
     "min_phantom_version": "6.4.1",
@@ -22,7 +22,7 @@
     },
     "configuration": {
         "base_url": {
-            "description": "Base URL of the APIM gateway fronting SOLIDserver, e.g. https://apim.internal.example",
+            "description": "Base URL of the APIM gateway fronting SOLIDserver, including any APIM path prefix that comes before /rest, e.g. https://apim.internal.example/some/prefix",
             "data_type": "string",
             "required": true,
             "order": 0
@@ -40,13 +40,13 @@
             "order": 2
         },
         "ddi_username": {
-            "description": "SOLIDserver backend username, forwarded through APIM via X-DDI-Username",
+            "description": "SOLIDserver backend username, forwarded through APIM via X-IPM-Username",
             "data_type": "string",
             "required": true,
             "order": 3
         },
         "ddi_password": {
-            "description": "SOLIDserver backend password, forwarded through APIM via X-DDI-Password",
+            "description": "SOLIDserver backend password, forwarded through APIM via X-IPM-Password",
             "data_type": "password",
             "required": true,
             "order": 4

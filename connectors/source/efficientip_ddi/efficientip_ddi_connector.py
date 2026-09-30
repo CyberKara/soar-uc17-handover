@@ -11,7 +11,7 @@ Auth (3 layers, every request):
      at the TLS layer.
   2. Authorization: Basic base64(client_id:client_secret) -- the APIM-level
      app credential. No OAuth token exchange.
-  3. X-DDI-Username / X-DDI-Password headers -- forwarded by APIM to
+  3. X-IPM-Username / X-IPM-Password headers -- forwarded by APIM to
      SOLIDserver's own backend auth, each value base64-encoded
      independently (not combined like the Basic Auth layer).
 """
@@ -34,6 +34,8 @@ from phantom.base_connector import BaseConnector
 
 from efficientip_ddi_consts import (
     BAD_REQUEST_STATUS,
+    DDI_PASSWORD_HEADER,
+    DDI_USERNAME_HEADER,
     DEFAULT_LIMIT,
     DEFAULT_RETRY_BACKOFF,
     DEFAULT_RETRY_COUNT,
@@ -128,7 +130,7 @@ class EfficientipDdiConnector(BaseConnector):
 
         ret_val, records = self._make_rest_call(
             "GET", IP_ADDRESS_LIST_PATH,
-            self._bounded_query(limit, "host_addr='{}'".format(query_addr)), action_result
+            self._bounded_query(limit, "hostaddr='{}'".format(query_addr)), action_result
         )
         if phantom.is_fail(ret_val):
             return action_result.get_status()
@@ -229,7 +231,7 @@ class EfficientipDdiConnector(BaseConnector):
     # Values never printed. Request side: the three auth headers. Response
     # side: anything that hands back a session.
     _SENSITIVE_HEADERS = frozenset({
-        "authorization", "x-ddi-username", "x-ddi-password",
+        "authorization", DDI_USERNAME_HEADER.lower(), DDI_PASSWORD_HEADER.lower(),
         "set-cookie", "cookie", "proxy-authorization", "www-authenticate-token",
     })
 
@@ -362,7 +364,7 @@ class EfficientipDdiConnector(BaseConnector):
     # exact-case match here would silently stop skipping one day.
     _CURL_SUPPLIED_HEADERS = frozenset({"host", "content-length"})
     # Replayed as shell variables further down, never as values.
-    _SECRET_HEADERS = frozenset({"authorization", "x-ddi-username", "x-ddi-password"})
+    _SECRET_HEADERS = frozenset({"authorization", DDI_USERNAME_HEADER.lower(), DDI_PASSWORD_HEADER.lower()})
 
     def _dbg_curl_equivalent(self, response):
         """Print the curl that reproduces this exact request.
@@ -411,8 +413,8 @@ class EfficientipDdiConnector(BaseConnector):
                 parts.append("-H '{}: {}'".format(name, value))
             parts.extend([
                 '-H "Authorization: Basic $BASIC_B64"',
-                '-H "X-DDI-Username: $DDI_USER_B64"',
-                '-H "X-DDI-Password: $DDI_PASS_B64"',
+                '-H "{}: $DDI_USER_B64"'.format(DDI_USERNAME_HEADER),
+                '-H "{}: $DDI_PASS_B64"'.format(DDI_PASSWORD_HEADER),
                 "'{}'".format(sent.url),
             ])
             self._dbg("curl equivalent (export the 3 vars first): {}".format(" ".join(parts)))
@@ -591,12 +593,14 @@ class EfficientipDdiConnector(BaseConnector):
         url = "{}{}".format(self._base_url, path)
         headers = self._auth_headers(config)
         # No Content-Type header. It describes a request BODY, and every action
-        # here is a bodiless GET -- declaring "application/json" on a request
-        # with no body invites a strict server to parse the empty body as a
-        # JSON document and reject it. The real appliance was seen returning
-        # HTTP 401 with `"message": "The specified document is not valid JSON
-        # data"`. Add Content-Type back per-request if a body is ever
-        # actually sent.
+        # here is a bodiless GET, so there is nothing for it to describe. Add
+        # it back per-request if a body is ever actually sent.
+        #
+        # It is NOT what produced HTTP 401 `"message": "The specified document
+        # is not valid JSON data"` -- that theory was exonerated (the UC17
+        # plan's "CONTENT-TYPE EXONERATED" note). On the target appliance that
+        # exact response came from sending the backend-auth headers under the
+        # wrong names (see DDI_USERNAME_HEADER in the consts).
         headers["Accept"] = "application/json"
         # Both from the vendor's own documented CURLOPT set for these services.
         # no-cache is the interesting one: the vendor's reference client asks for
@@ -873,16 +877,18 @@ class EfficientipDdiConnector(BaseConnector):
         ).decode()
         return {
             "Authorization": "Basic {}".format(basic),
-            "X-DDI-Username": base64.b64encode(ddi_username.encode()).decode(),
-            "X-DDI-Password": base64.b64encode(ddi_password.encode()).decode(),
+            DDI_USERNAME_HEADER: base64.b64encode(ddi_username.encode()).decode(),
+            DDI_PASSWORD_HEADER: base64.b64encode(ddi_password.encode()).decode(),
         }
 
     def _validate_ip(self, address, action_result):
         """Validate a caller-supplied address and return its normalised form.
 
-        The dotted address goes on the wire as-is: `host_addr` is the
+        The dotted address goes on the wire as-is: `hostaddr` is the
         filterable column for it (sibling of the hex-valued `ip_addr`), so no
-        encoding step is needed. Normalising still matters for IPv6, where the
+        encoding step is needed. The underscored `host_addr` is NOT a column on
+        the target appliance: it answers with a SQL error (sql_error 7), which
+        a mock seeded with that name had hidden. Normalising still matters for IPv6, where the
         same address has many spellings and only one compressed form.
 
         Returns None (with action_result already failed) for anything that is

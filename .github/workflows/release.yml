@@ -1,0 +1,50 @@
+# Publish a GitHub Release whenever a new connector package lands on main.
+#
+# "New" means a connectors/efficientip_ddi-v<version>.tgz that was added in the
+# pushed commits. tools/create_releases.sh tags it at the commit that added it,
+# attaches that exact file and uses the commit message as the notes, and refuses
+# a package whose filename version disagrees with the app_version inside it.
+#
+# To cut a release: commit connectors/efficientip_ddi-v<version>.tgz to main.
+# To re-run by hand (or backfill every package that has no release): run this
+# workflow from the Actions tab. A version that already has a release is skipped.
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'connectors/efficientip_ddi-v*.tgz'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# One run at a time: two overlapping runs both see "no release yet" and the
+# second then fails creating a tag the first just made.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create releases for new connector packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          # On a push, look only at the commits just pushed. A brand-new branch
+          # (before is all zeros) or a rewritten history leaves no usable start
+          # point, so fall back to the full history, which is safe because the
+          # script skips versions that already have a release.
+          range=""
+          if [ "$EVENT_NAME" = "push" ] && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            range="${BEFORE}..${GITHUB_SHA}"
+          fi
+          bash tools/create_releases.sh ${range:+"$range"}

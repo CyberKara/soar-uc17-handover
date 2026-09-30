@@ -1,7 +1,7 @@
 # UC17 — EfficientIP DDI Enrichment — Paquet de transfert (déploiement air-gapped)
 
 Généré le 2026-09-24 12:48 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
-Mis à jour le 2026-09-30 : connecteur v1.0.12 et nouveau playbook `efficientip_ddi_lookup`, construits
+Mis à jour le 2026-09-30 : connecteur v1.0.13 et nouveau playbook `efficientip_ddi_lookup`, construits
 à partir du dépôt source, sans nouvel export de `soar8`. `efficientip_ddi_enrich` et le modèle
 d'asset sont inchangés par rapport à l'export du 2026-09-24.
 
@@ -14,7 +14,7 @@ dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
 
 | Chemin | Contenu |
 |--------|---------|
-| `connectors/` | Paquet(s) applicatif(s) connecteur : efficientip_ddi-v1.0.12.tgz |
+| `connectors/` | Paquet(s) applicatif(s) connecteur : efficientip_ddi-v1.0.13.tgz |
 | `connectors/source/` | Même(s) connecteur(s), extrait(s) — pour lecture, pas pour import |
 | `playbooks/*.tgz` (PB) | efficientip_ddi_enrich, efficientip_ddi_lookup, efficientip_ddi_action_test |
 | `playbooks/source/` | Mêmes CF/playbooks, extraits — pour lecture, pas pour import |
@@ -30,7 +30,7 @@ d'installation.
 
 - **Ce qui s'applique dépend de ce qui est déjà installé — vérifiez d'abord la liste des applications.** Ouvrez Apps et recherchez `EfficientIP`. Si vous voyez **une seule** application (nommée `efficientip_ddi` / `EfficientIP DDI`), vous avez installé le paquet du 2026-08-31 ou un plus récent : celui-ci est une **mise à jour normale, sur place**. Installez-le par-dessus l'application existante — même identifiant interne — et votre actif (asset) existant continue de fonctionner avec tous ses identifiants. **Ne supprimez rien et ne ressaisissez aucun identifiant.** Si en revanche vous voyez **deux** applications (`efficientip_ddi` et `EfficientIP DDI (Classic)`), vous êtes encore sur un paquet antérieur au 2026-08-31, et c'est la note ci-dessous qui vous concerne.
 
-- **Le connecteur v1.0.12 corrige un HTTP 401 systématique sur Test Connectivity.** Le connecteur envoyait les deux en-têtes d'identifiants SOLIDserver sous les noms `X-DDI-Username` / `X-DDI-Password` ; l'APIM lit `X-IPM-Username` / `X-IPM-Password`, et avec les mauvais noms chaque appel échouait en HTTP 401 avec le message « The specified document is not valid JSON data ». Il corrige aussi `get ip address`, qui filtrait sur une colonne (`host_addr`) absente de l'appliance ; il utilise désormais `hostaddr`. La mise à jour du connecteur est normale, sur place : même application, même actif (asset), aucun identifiant à ressaisir. Installez-le par-dessus l'application existante. Un point à vérifier sur l'actif : **`base_url` doit inclure le préfixe de chemin de l'APIM situé avant `/rest`** (par exemple `https://apim.exemple/prefixe/segment`) ; le connecteur y ajoute `/rest/<service>`.
+- **Le connecteur v1.0.12 corrige un HTTP 401 systématique sur Test Connectivity** (ce paquet contient la v1.0.13 : le même code, commentaires condensés). Le connecteur envoyait les deux en-têtes d'identifiants SOLIDserver sous les noms `X-DDI-Username` / `X-DDI-Password` ; l'APIM lit `X-IPM-Username` / `X-IPM-Password`, et avec les mauvais noms chaque appel échouait en HTTP 401 avec le message « The specified document is not valid JSON data ». Il corrige aussi `get ip address`, qui filtrait sur une colonne (`host_addr`) absente de l'appliance ; il utilise désormais `hostaddr`. La mise à jour du connecteur est normale, sur place : même application, même actif (asset), aucun identifiant à ressaisir. Installez-le par-dessus l'application existante. Un point à vérifier sur l'actif : **`base_url` doit inclure le préfixe de chemin de l'APIM situé avant `/rest`** (par exemple `https://apim.exemple/prefixe/segment`) ; le connecteur y ajoute `/rest/<service>`.
 
 - **Deux playbooks sont nouveaux ou modifiés.** `efficientip_ddi_lookup` est nouveau : un playbook d'automatisation, label `efficientip_ddi`, qu'un analyste lance depuis un container et qui demande l'adresse IP. `efficientip_ddi_action_test` est désormais lui aussi un playbook d'automatisation avec ce label : c'était un playbook d'entrée, qu'un analyste ne peut pas lancer depuis un container. `efficientip_ddi_enrich` est inchangé. Importez les deux, après avoir créé le label (voir l'étape d'activation ci-dessous). Si SOAR conserve l'ancien `efficientip_ddi_action_test` de type entrée après l'import, supprimez-le dans Playbooks et importez-le de nouveau.
 

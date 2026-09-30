@@ -55,7 +55,10 @@
 # marker strings. gitleaks itself is not installed where this edit was made, so
 # the pin has NOT been run through the scanner -- run it before the next push
 # to a public remote.
-connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:1029
+# 2026-09-30 (later) - repinned for v1.0.13 (comments condensed, no code change): 1029 -> 850.
+# Verified by grep; the delimiter tuple is unchanged. gitleaks was not available where
+# this was edited, so the pin has NOT been run through the scanner.
+connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:850
 
 # False positive: SOAR's own VPE-generated node bookkeeping field, not a
 # credential. Every decision/filter block's condition gets a

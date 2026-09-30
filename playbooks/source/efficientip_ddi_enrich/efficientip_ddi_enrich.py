@@ -172,10 +172,8 @@ def finalize(action=None, success=None, container=None, results=None, handle=Non
         content=summary_note,
     )
 
-    # save_playbook_output_data() is only callable from on_finish() on SOAR 8.5
-    # (RuntimeError otherwise) -- stash the output via save_run_data and let
-    # on_finish() do the actual save. See playbook-patterns.md's documented
-    # "save_run_data + on_finish output" pattern.
+    # Stash the output; on_finish() fills the VPE-generated output dict from it
+    # (save_playbook_output_data() is only callable there).
     phantom.save_run_data(key="playbook_output", value=json.dumps({
         "status": output_status,
         "ip_address": ip_address,
@@ -260,10 +258,8 @@ def note_error(action=None, success=None, container=None, results=None, handle=N
         content=error_note,
     )
 
-    # save_playbook_output_data() is only callable from on_finish() on SOAR 8.5
-    # (RuntimeError otherwise) -- stash the output via save_run_data and let
-    # on_finish() do the actual save. See playbook-patterns.md's documented
-    # "save_run_data + on_finish output" pattern.
+    # Stash the output; on_finish() fills the VPE-generated output dict from it
+    # (save_playbook_output_data() is only callable there).
     phantom.save_run_data(key="playbook_output", value=json.dumps({
         "status": "error",
         "ip_address": "",
@@ -309,12 +305,9 @@ def on_finish(container, summary):
     ################################################################################
     ################################################################################
 
-    # Populate the generated `output` dict; do NOT call
-    # phantom.save_playbook_output_data() here. The VPE appends its own
-    # save_playbook_output_data(output=output) immediately after this block, so
-    # anything saved from inside the block is silently overwritten with the
-    # all-None dict above on any GUI save -- the run still reports success and
-    # still passes validation, and every consumer just gets nulls.
+    # Populate the generated `output` dict only: the VPE appends its own
+    # save_playbook_output_data(output=output) after this block, which would
+    # overwrite anything saved here.
     raw_output = phantom.get_run_data(key="playbook_output")
     if raw_output:
         output.update(json.loads(raw_output))

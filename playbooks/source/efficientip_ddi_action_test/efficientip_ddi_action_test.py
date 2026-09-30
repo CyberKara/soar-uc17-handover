@@ -3,12 +3,8 @@ EfficientIP DDI Action Test (diagnostic)
 
 Automation playbook exercising all 3 efficientip_ddi actions against known-good
 mock seed values, in 3 independent parallel branches, each writing its own
-pass/fail note. Built after the SOAR App Debugger's "view app" code/trigger-
-action panel was found to always report "Action X not found" for SDK-based
-apps regardless of whether the connector actually works (see memory
-project-soar85-app-debugger-sdk-action-not-found) -- this playbook exercises
-the real action_run dispatch path instead, the same one playbooks/asset
-Test Connectivity/container runs actually use.
+pass/fail note. It goes through the real action_run dispatch path, the same one
+playbooks and container runs use.
 
 Trigger: manual -- launched by an analyst from a container with label
          efficientip_ddi (Playbooks > Run Playbook). An automation playbook, left
@@ -82,9 +78,7 @@ def run_get_ip_address(action=None, success=None, container=None, results=None, 
     phantom.debug("run_get_ip_address() called")
 
     ################################################################################
-    # Static test address -- 10.20.30.40 is the mock's known-good seed record
-    # (has hostname/MAC/description), so this exercises the found path, not
-    # just not-found.
+    # Static test address: the mock's seed record, so the found path is exercised.
     ################################################################################
 
     parameters = [{
@@ -133,9 +127,7 @@ def run_list_subnets(action=None, success=None, container=None, results=None, ha
     phantom.debug("run_list_subnets() called")
 
     ################################################################################
-    # Static test name -- CORP_LAN-USERS is the mock's known-good seed subnet.
-    # Subnet names are LABELS, not CIDRs: a subnet's address lives in its range
-    # fields, never in its name.
+    # Static test name: the mock's seed subnet. Subnet names are labels, not CIDRs.
     ################################################################################
 
     parameters = [{

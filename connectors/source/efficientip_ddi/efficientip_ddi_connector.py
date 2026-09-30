@@ -1,19 +1,14 @@
 # efficientip_ddi_connector.py
 """EfficientIP DDI SOAR Connector - IPAM enrichment against SOLIDserver via APIM.
 
-Classic BaseConnector style, which is a recorded exemption from FR-01 in
-docs/dev-rules.md: the App Debugger cannot dispatch actions for SDK-based apps
-on SOAR 8.5, and on an airgapped appliance that panel is the operator's only
-way to exercise an action by hand. See the README for field-name provenance.
+Classic BaseConnector style (see the README). Auth, on every request:
+  1. mTLS -- client_cert/client_key (+ optional client_ca) presented to APIM.
+  2. Authorization: Basic base64(client_id:client_secret) -- the APIM app credential.
+  3. X-IPM-Username / X-IPM-Password -- forwarded by APIM to SOLIDserver's own
+     backend auth, each value base64-encoded independently.
 
-Auth (3 layers, every request):
-  1. mTLS -- client_cert/client_key (+ optional client_ca) presented to APIM
-     at the TLS layer.
-  2. Authorization: Basic base64(client_id:client_secret) -- the APIM-level
-     app credential. No OAuth token exchange.
-  3. X-IPM-Username / X-IPM-Password headers -- forwarded by APIM to
-     SOLIDserver's own backend auth, each value base64-encoded
-     independently (not combined like the Basic Auth layer).
+Design notes and investigation history:
+docs/efficientip_ddi_implementation_notes.md
 """
 
 import base64
@@ -102,11 +97,9 @@ class EfficientipDdiConnector(BaseConnector):
         action_result = self.add_action_result(ActionResult(dict(param)))
         self.save_progress("DEBUG GUI: Starting test connectivity action")
 
-        # No dedicated health-check service exists in SOLIDserver's real API.
-        # ip_block_subnet_list is the one endpoint confirmed to exist on the
-        # real APIM that needs no filter/params at all. limit=1 is required,
-        # not optional: a bare list call with no WHERE *and* no limit times
-        # out server-side on the real APIM; limit alone (no WHERE) works.
+        # No health-check service exists. ip_block_subnet_list needs no filter;
+        # limit=1 is required, since a list call with neither WHERE nor limit
+        # times out server-side.
         ret_val, _ = self._make_rest_call("GET", IP_BLOCK_SUBNET_LIST_PATH, {"limit": 1}, action_result)
 
         if phantom.is_fail(ret_val):
@@ -143,17 +136,10 @@ class EfficientipDdiConnector(BaseConnector):
                 phantom.APP_ERROR, "No IP address record found in SOLIDserver for {}".format(address)
             )
 
-        # Raw pass-through, not a curated field mapping: the real API's own
-        # field names have been wrong under manual mapping multiple times
-        # (subnet_name vs name, start_hostaddr vs pool_start_hostaddr, etc.)
-        # -- every real key SOLIDserver returns is forwarded as-is under
-        # action_result.data.*.<key>, no guessing required. address and
-        # description (parsed from the ip_class_parameters blob) are added
-        # as convenience keys on top.
-        #
-        # One data item per record, not just records[0]: data.* is a list
-        # datapath, so truncating here would silently drop every row past
-        # the first whenever the caller raises "limit".
+        # Raw pass-through, one data item per record: SOLIDserver's own field
+        # names were wrong under manual mapping, and data.* is a list datapath.
+        # address and description (from ip_class_parameters) are added as
+        # convenience keys.
         for record in records:
             class_params = self._parse_class_parameters(record.get("ip_class_parameters", ""))
             record["description"] = class_params.get("description", "")
@@ -176,10 +162,8 @@ class EfficientipDdiConnector(BaseConnector):
         if limit is None:
             return action_result.get_status()
 
-        # Resolved before the call, so an ambiguous filter fails without ever
-        # touching the APIM. LIST_SUBNETS_FILTERS carries the param -> WHERE
-        # column mapping, including the two that deliberately differ. No filter
-        # is legal: it lists subnets bare, bounded by limit.
+        # Resolved before the call, so an ambiguous filter fails without
+        # touching the APIM. No filter is legal: a bounded bare list.
         ok, column, value = self._select_optional_filter(param, LIST_SUBNETS_FILTERS, action_result)
         if not ok:
             return action_result.get_status()
@@ -202,8 +186,8 @@ class EfficientipDdiConnector(BaseConnector):
                 phantom.APP_ERROR, "No subnet found in SOLIDserver{}".format(where)
             )
 
-        # Raw pass-through, one data item per record -- see
-        # _handle_get_ip_address for both rationales.
+        # Raw pass-through, one data item per record (see
+        # _handle_get_ip_address).
         for record in records:
             class_params = self._parse_class_parameters(record.get("subnet_class_parameters", ""))
             record["description"] = class_params.get("description", "")
@@ -221,12 +205,9 @@ class EfficientipDdiConnector(BaseConnector):
 
     # ---- Diagnostics ----
     #
-    # Everything below writes through save_progress, which is the only channel
-    # that reaches an operator with no shell: it renders both in the App
-    # Debugger panel and in a container action result. add_debug_data() does
-    # NOT -- it is dropped before the action result is persisted (verified on
-    # soar8 app_run 6507, where result_data carries no debug_data key), so the
-    # response headers it collects have never been visible to anyone.
+    # Written through save_progress, the only channel that reaches an operator
+    # with no shell (App Debugger panel and action result). add_debug_data() is
+    # dropped before the result is persisted.
 
     # Values never printed. Request side: the three auth headers. Response
     # side: anything that hands back a session.
@@ -235,35 +216,22 @@ class EfficientipDdiConnector(BaseConnector):
         "set-cookie", "cookie", "proxy-authorization", "www-authenticate-token",
     })
 
-    # Bodies are logged whole up to this, then truncated. Generous enough for a
-    # gateway error page or a few IPAM records, short enough not to bury the
-    # rest of the trace in the GUI panel.
+    # Response bodies are logged whole up to this limit, then truncated with a
+    # marker.
     _BODY_LOG_LIMIT = 2000
 
     def _dbg(self, message):
-        """Emit a diagnostic line, if this asset asked for them.
+        """Emit a diagnostic line when the asset's debug_logging is on.
 
-        This channel was built to chase an intermittent HTTP 401 and it prints
-        the entire exchange -- request, headers, peer, timings, body. That is
-        the right amount of noise while hunting and the wrong amount forever:
-        on a normal enrichment run it buries the action's actual result under
-        forty lines nobody asked for.
-
-        The 401 turned out to be the gateway's backend leg failing, which no
-        connector change can fix, so the operator may still need this on a bad
-        day. Hence a toggle rather than a deletion -- off by default, one
-        checkbox to get it back.
+        Off by default: the full exchange (request, headers, peer, timings,
+        body) buries the action result on a normal run.
         """
         if not self.get_config().get("debug_logging"):
             return
         self.save_progress("DEBUG GUI: {}".format(message))
 
     def _body_preview(self, text):
-        """Render a body for the log, flagging truncation explicitly.
-
-        Silent truncation is worse than none: it invites reading a cut-off
-        JSON document as a malformed one.
-        """
+        """Render a body for the log, flagging truncation explicitly."""
         if not text:
             return "(empty)"
         if len(text) <= self._BODY_LOG_LIMIT:
@@ -271,11 +239,8 @@ class EfficientipDdiConnector(BaseConnector):
         return "{} ... (truncated, {} chars total)".format(text[:self._BODY_LOG_LIMIT], len(text))
 
     def _fingerprint(self, material):
-        """Identify PEM material without printing it.
-
-        Enough to answer "is the cert the connector used this time the same one
-        it used last time" across runs, which no log line could otherwise show
-        without leaking the material itself.
+        """Identify PEM material without printing it (length + SHA-256 prefix), so
+        runs can be compared.
         """
         if not material:
             return "absent"
@@ -293,11 +258,8 @@ class EfficientipDdiConnector(BaseConnector):
         return "; ".join(rendered) if rendered else "(none)"
 
     def _resolve_peers(self, url):
-        """List every address the APIM hostname resolves to.
-
-        A name answering on several addresses is the first thing worth ruling
-        in or out when calls fail intermittently with identical inputs: one
-        node out of N behaving differently looks exactly like that from here.
+        """List every address the APIM hostname resolves to (one bad node of
+        several looks intermittent).
         """
         try:
             parts = urlsplit(url)
@@ -309,13 +271,8 @@ class EfficientipDdiConnector(BaseConnector):
             addresses = sorted({info[4][0] for info in infos})
             summary = "{} -> {}".format(host, ", ".join(addresses))
             if len(addresses) > 1:
-                # Called out rather than merely listed. A 401 that is consistent
-                # across every retry inside one action run, yet comes and goes
-                # between runs, is the signature of ONE bad node behind a name:
-                # the config is identical, so what changes between runs is which
-                # node answered. Compare the "peer" line on a failing run against
-                # a succeeding one -- if they differ, the node is the answer and
-                # retrying the same name will never help.
+                # Several addresses behind one name: compare the peer line
+                # across a failing and a succeeding run.
                 summary += "  [!] {} addresses -- compare the peer line across a failing and a succeeding run".format(
                     len(addresses),
                 )
@@ -326,19 +283,11 @@ class EfficientipDdiConnector(BaseConnector):
     def _peer_address(self, response):
         """The address that actually served this call.
 
-        Tells us WHICH of the resolved addresses answered, which is the
-        difference between suspecting a bad node and naming it.
-
-        Only readable while the connection is still held. requests releases it
-        the instant the body is read, so the caller issues the request with
-        stream=True and calls this BEFORE touching .content.
-
-        Where the socket hangs off the response is a urllib3 private detail
-        that has moved between versions -- on urllib3 1.26 `_connection.sock`
-        is already None while `_fp.fp.raw._sock` is live -- and this connector
-        is built on one host and run on another. So try the known layouts in
-        order and take the first that answers. All of it is best-effort:
-        diagnostics must never fail an action.
+        Only readable while the connection is held, so the request is issued
+        with stream=True and this is called before .content is read. The socket
+        hangs off the response at different private paths across urllib3
+        versions, so the known layouts are tried in turn. Best-effort:
+        diagnostics never fail an action.
         """
         candidate_paths = (
             "_connection.sock",
@@ -358,31 +307,18 @@ class EfficientipDdiConnector(BaseConnector):
                 continue
         return "unavailable"
 
-    # curl builds these itself from the URL and the request it is given;
-    # replaying ours would either duplicate or fight them.
-    # Lowercased: requests preserves whatever case set the header, so an
-    # exact-case match here would silently stop skipping one day.
+    # curl supplies these itself. Lowercased: requests preserves the case that
+    # set a header.
     _CURL_SUPPLIED_HEADERS = frozenset({"host", "content-length"})
     # Replayed as shell variables further down, never as values.
     _SECRET_HEADERS = frozenset({"authorization", DDI_USERNAME_HEADER.lower(), DDI_PASSWORD_HEADER.lower()})
 
     def _dbg_curl_equivalent(self, response):
-        """Print the curl that reproduces this exact request.
+        """Print a runnable curl equivalent of this exact request.
 
-        The user's hand-run curl succeeds where this connector 401s. That is
-        the whole problem, and arguing about it from here cannot settle it --
-        running both against the same appliance can. So emit the real request
-        as a runnable curl: same URL and query encoding (read back off the
-        PreparedRequest, not off our intent), same headers, same client cert.
-
-        Credentials are NOT printed. The three auth headers come out as shell
-        variables so the line is runnable once they are exported, without the
-        log ever carrying a secret.
-
-        If that curl succeeds while this connector 401s on the same appliance
-        seconds apart, the fault is in this HTTP client and nowhere else. If it
-        fails the same way, the fault is in what we are sending, which the same
-        line makes visible.
+        URL and headers are read back off the PreparedRequest. The client cert
+        is a placeholder and the three credentials are shell variables, never
+        values, so the log carries no secret.
         """
         try:
             sent = getattr(response, "request", None)
@@ -390,22 +326,16 @@ class EfficientipDdiConnector(BaseConnector):
                 return
             config = self.get_config()
             parts = [
-                # No backslash escapes anywhere in this line: it travels through
-                # a JSON log record, and an escape there truncates the command
-                # at exactly the point the reader needs it whole.
+                # No backslash escapes in this line: it travels through a JSON
+                # log record.
                 "curl -sS -o /dev/null -D -",
                 "--cert <your client_cert>.pem --key <your client_key>.pem",
             ]
             if config.get("client_ca"):
                 parts.append("--cacert <your client_ca>.pem")
-            # Every header actually on the wire, read back off the
-            # PreparedRequest -- not an allowlist of the ones we remember
-            # setting. An earlier version replayed only Accept and
-            # Cache-Control, so the emitted command silently dropped
-            # Accept-Encoding and Connection (which requests adds on its own)
-            # and would have "reproduced" the request while differing from it
-            # in exactly the headers this gateway reports Vary on. A tool that
-            # lies is worse than no tool.
+            # Every header actually on the wire, read off the PreparedRequest
+            # (requests adds Accept-Encoding and Connection itself), not an
+            # allowlist.
             for name, value in sent.headers.items():
                 lowered = name.lower()
                 if lowered in self._CURL_SUPPLIED_HEADERS or lowered in self._SECRET_HEADERS:
@@ -427,22 +357,13 @@ class EfficientipDdiConnector(BaseConnector):
             self._dbg("curl equivalent unavailable: {}: {}".format(type(e).__name__, e))
 
     def _dbg_ambient_env(self):
-        """Report the ambient settings requests WOULD honour, and we disable.
+        """Report the ambient settings requests would honour and this connector
+        disables.
 
-        This is the difference between this connector and the curl the user
-        runs by hand, and it is invisible from the request itself. With
-        trust_env left on (the library default), requests will:
-
-          - read ~/.netrc and, on a host match, REPLACE the Authorization
-            header we just built with the netrc credentials. curl only does
-            this with -n. A stale netrc entry is a silent 401.
-          - route through HTTPS_PROXY/HTTP_PROXY. A proxy terminates TLS, so
-            the client certificate never reaches the APIM -- also a 401, and
-            an intermittent one if the proxy is itself load-balanced.
-          - override `verify` from REQUESTS_CA_BUNDLE/CURL_CA_BUNDLE.
-
-        We now turn all of that off. Logging what was present says whether it
-        was ever the cause, which matters more than silently fixing it.
+        With trust_env on, requests would replace the Authorization header from
+        ~/.netrc, route through HTTPS_PROXY (terminating TLS ahead of the APIM)
+        and override verify from REQUESTS_CA_BUNDLE/CURL_CA_BUNDLE. Logging
+        what was present says whether any was in play.
         """
         try:
             names = ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy",
@@ -463,24 +384,15 @@ class EfficientipDdiConnector(BaseConnector):
             self._dbg("ambient env unreadable: {}: {}".format(type(e).__name__, e))
 
     def _dbg_exchange(self, response, peer, headers_ms, elapsed_ms, attempt=1, attempts=1):
-        """Log the whole exchange, best-effort.
-
-        Wrapped like every other helper here: a diagnostic must never be the
-        reason an action fails. This one reads several attributes that a real
-        requests.Response always has but a stand-in may not (`request`,
-        `history`), so unguarded it turns a working action into an
-        AttributeError.
+        """Log the whole exchange, best-effort: a diagnostic must never fail an
+        action.
         """
         try:
             self._dbg("attempt {}/{}: HTTP {} from peer {} -- {:.0f} ms to headers, {:.0f} ms total".format(
                 attempt, attempts, response.status_code, peer, headers_ms, elapsed_ms,
             ))
-            # What actually went on the wire, read back off the PreparedRequest
-            # rather than off our own intent: this is the URL after requests
-            # encoded the query string, and the headers after it added its own
-            # (Host, User-Agent, Accept-Encoding, Connection). If the gateway is
-            # rejecting the request's SHAPE, the difference shows up here and
-            # nowhere else.
+            # Read back off the PreparedRequest: the URL as encoded and every
+            # header requests added.
             sent = getattr(response, "request", None)
             if sent is not None:
                 self._dbg("sent: {} {}".format(sent.method, sent.url))
@@ -496,10 +408,8 @@ class EfficientipDdiConnector(BaseConnector):
                 if history else "(none)",
             ))
             self._dbg("response headers: {}".format(self._format_headers(response.headers)))
-            # Logged on success as well as failure. Comparing the body of a call
-            # that worked against one that did not is the whole point, and on a
-            # gateway that answers non-auth problems with 401 the body is where
-            # it says which problem it meant.
+            # Logged on success too: a good call is only readable next to a bad
+            # one.
             self._dbg("received body ({} bytes): {}".format(
                 len(response.content or b""), self._body_preview(response.text),
             ))
@@ -509,23 +419,12 @@ class EfficientipDdiConnector(BaseConnector):
     # ---- Retry policy ----
 
     def _user_agent(self):
-        """User-Agent to present, blank to keep the library default.
-
-        Defaults to a curl string because curl is the client known to work
-        against this org's APIM, and a gateway keying a policy on User-Agent
-        (bot filters and per-client rate limits routinely do) is one of the few
-        remaining differences between the two. Configurable so this can be
-        tested both ways without a rebuild, and set back to blank once the
-        question is settled either way.
-        """
+        """User-Agent to present; blank keeps the HTTP library default."""
         return (self.get_config().get("user_agent") or "").strip()
 
     def _bounded_config_number(self, key, default, minimum, maximum):
-        """Read a numeric asset-config value, clamped, never raising.
-
-        A SOAR numeric field still arrives as whatever the operator typed, and
-        a bad retry setting must not be the thing that takes an enrichment
-        action down -- fall back to the default and say so.
+        """Read a numeric asset-config value, clamped, never raising: a bad retry
+        setting must not take an action down.
         """
         raw = self.get_config().get(key)
         if raw is None or raw == "":
@@ -554,15 +453,8 @@ class EfficientipDdiConnector(BaseConnector):
         return attempts, backoff
 
     def _log_idle_gap(self):
-        """Log how long since the last call that succeeded.
-
-        This is the one number that separates the three surviving explanations
-        for the intermittent 401, because each predicts a different
-        relationship to it: an auth-cache expiry fails after a GAP, a quota
-        policy fails under a BURST (the opposite), and a load-balanced node
-        with inconsistent trust correlates with neither -- it shows up in the
-        peer address instead. Recorded on every call so a failing one can be
-        compared against a succeeding one.
+        """Log the seconds since the last successful call, so a failing call can
+        be compared with a succeeding one.
         """
         last = self._state.get("last_success_epoch") if isinstance(self._state, dict) else None
         if not last:
@@ -580,36 +472,24 @@ class EfficientipDdiConnector(BaseConnector):
     def _make_rest_call(self, method, path, params, action_result):
         """Execute an APIM call with mTLS cert setup + 3-layer auth, cleanup.
 
-        Retries an HTTP 401 up to the asset's configured attempt count. Every
-        attempt is logged individually, and a call that only succeeded on a
-        later attempt says so in the action result rather than passing silently
-        -- the intermittency is an open investigation, so the retry has to stay
-        visible instead of papering over the evidence.
+        Retries HTTP 401 up to the asset's configured attempts. Every attempt
+        is logged, and a call that only succeeded on a later attempt says so in
+        the action result.
 
         Returns:
-            tuple: (status, response_data) - RetVal pattern
+          tuple: (status, response_data) - RetVal pattern
         """
         config = self.get_config()
         url = "{}{}".format(self._base_url, path)
         headers = self._auth_headers(config)
-        # No Content-Type header. It describes a request BODY, and every action
-        # here is a bodiless GET, so there is nothing for it to describe. Add
-        # it back per-request if a body is ever actually sent.
+        # No Content-Type: every action is a bodiless GET. Add it per request
+        # if a body is ever sent.
         #
-        # It is NOT what produced HTTP 401 `"message": "The specified document
-        # is not valid JSON data"` -- that theory was exonerated (the UC17
-        # plan's "CONTENT-TYPE EXONERATED" note). On the target appliance that
-        # exact response came from sending the backend-auth headers under the
-        # wrong names (see DDI_USERNAME_HEADER in the consts).
+        # A 401 "The specified document is not valid JSON data" is the APIM
+        # rejecting backend-auth headers it does not recognise (see
+        # DDI_USERNAME_HEADER), not this header.
         headers["Accept"] = "application/json"
-        # Both from the vendor's own documented CURLOPT set for these services.
-        # no-cache is the interesting one: the vendor's reference client asks for
-        # a fresh answer on every call, which says caching is a live concern
-        # somewhere on this path. That is *consistent with* one of the surviving
-        # explanations for the intermittent 401 (an auth/response cache), but it
-        # is not evidence for it and this header is not a fix -- it is here
-        # because matching the reference client costs nothing and removes one
-        # difference between us and the only implementation known to work.
+        # Accept and Cache-Control match the vendor's reference client.
         headers["Cache-Control"] = "no-cache"
 
         cert_path = key_path = ca_path = None
@@ -627,14 +507,10 @@ class EfficientipDdiConnector(BaseConnector):
 
             verify_ssl = config.get("verify_ssl", True)
             verify = ca_path if (verify_ssl and ca_path) else verify_ssl
-            # With trust_env now off, a REQUESTS_CA_BUNDLE in the environment no
-            # longer applies by itself. It previously did -- but only when no
-            # client_ca was configured, because requests substitutes it solely
-            # when verify is True. That made an optional asset field silently
-            # decide whether the platform's CA bundle or the system trust store
-            # verified the APIM, which is a miserable thing to debug on an
-            # airgapped box. Honour it explicitly as a fallback so no working
-            # asset regresses, and say so in the log.
+            # With trust_env off, REQUESTS_CA_BUNDLE/CURL_CA_BUNDLE no longer
+            # applies by itself. Honour it explicitly when no client_ca is set,
+            # so an optional asset field does not silently change which bundle
+            # verifies the APIM.
             if verify is True:
                 env_bundle = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("CURL_CA_BUNDLE")
                 if env_bundle:
@@ -651,23 +527,12 @@ class EfficientipDdiConnector(BaseConnector):
                 attempts, backoff, sorted(RETRYABLE_STATUS),
             ))
 
-            # An explicit Session, for two reasons that both bite silently.
-            #
-            # 1. requests.request() is `with Session() as s: return s.request(...)`
-            #    -- the session, its adapters and its connection pools are CLOSED
-            #    the moment it returns. Combined with stream=True (which we need,
-            #    because the peer address is only readable before the body is
-            #    read) that meant reading .content off a response whose pool was
-            #    already torn down. Undefined behaviour at best.
-            # 2. trust_env=False. With the library default of True, requests
-            #    silently honours the ambient environment in ways curl does not:
-            #    a matching ~/.netrc entry REPLACES the Authorization header we
-            #    just built, and HTTPS_PROXY reroutes the call through a proxy
-            #    that terminates TLS so the client certificate never reaches the
-            #    APIM. Either one is an HTTP 401 that looks like a credential
-            #    problem, and neither is visible in the request we think we sent.
-            #    Proxies are also emptied explicitly, so a session-level default
-            #    cannot reintroduce one.
+            # Explicit Session: requests.request() closes its session before a
+            # stream=True body is read, and trust_env=False keeps ~/.netrc (it
+            # would REPLACE the Authorization header) and HTTPS_PROXY (it would
+            # terminate TLS ahead of the APIM) out of the call. Proxies are
+            # also emptied explicitly so a session default cannot reintroduce
+            # one.
             session = requests.Session()
             session.trust_env = False
             session.proxies = {}
@@ -686,11 +551,8 @@ class EfficientipDdiConnector(BaseConnector):
                 response.content  # noqa: B018 - forces the read, releases the connection
                 elapsed_ms = (time.monotonic() - started) * 1000
 
-                # Logged for every response, not just failures: an intermittent
-                # fault is only legible by comparing a good call against a bad
-                # one, so the good ones have to be on the record too. Splitting
-                # the two timings separates a slow gateway decision (headers)
-                # from a slow body transfer, and both from a fast reject.
+                # Logged for every response, good or bad, so calls can be
+                # compared.
                 self._dbg_exchange(response, peer, headers_ms, elapsed_ms, attempt, attempts)
                 if attempt == 1:
                     self._dbg_curl_equivalent(response)
@@ -714,10 +576,8 @@ class EfficientipDdiConnector(BaseConnector):
             if response.ok:
                 self._record_success()
                 if attempt > 1:
-                    # Surfaced through save_progress, not only the debug log:
-                    # a result that reads as a clean success while the gateway
-                    # is rejecting a third of its calls hides the very symptom
-                    # under investigation.
+                    # Through save_progress, not only the debug log: a late
+                    # success must not read as a clean one.
                     self.save_progress(
                         "Succeeded on attempt {} of {} (earlier attempt(s) returned HTTP {})".format(
                             attempt, attempts, HTTP_STATUS_UNAUTHORIZED,
@@ -759,9 +619,8 @@ class EfficientipDdiConnector(BaseConnector):
 
         content_type = response.headers.get("Content-Type", "")
 
-        # Which of the four branches below a response takes is not obvious from
-        # the outcome -- an empty 204 and a JSON empty array both end as "no
-        # records found" -- so name the branch taken.
+        # Name the branch taken: an empty 204 and an empty JSON array both end
+        # as "no records".
         if "json" in content_type:
             self._dbg("parse: JSON body (content-type {})".format(content_type))
             try:
@@ -772,14 +631,9 @@ class EfficientipDdiConnector(BaseConnector):
                     None,
                 )
         elif not response.content:
-            # The real APIM returns HTTP 204 No Content (empty body, no
-            # Content-Type) for a "not found"/empty result on a list
-            # endpoint -- not a 200 with an empty JSON
-            # array. Every action here expects a list from _ensure_list(),
-            # so default to [] here, not {} -- a dict would fail that
-            # isinstance check and surface a confusing "unexpected response
-            # shape" error instead of the intended friendly "No X found"
-            # message.
+            # A list endpoint answers no match with HTTP 204 and an empty body,
+            # not 200 with []. Default to [] (not {}) so _ensure_list() sees a
+            # list and the action reports "No X found".
             self._dbg("parse: empty body, treated as zero records")
             data = []
         elif response.ok:
@@ -803,10 +657,8 @@ class EfficientipDdiConnector(BaseConnector):
 
         detail = self._error_detail(data, response)
 
-        # This API uses only four codes and 403 is not the standard one, so the
-        # error text names the meaning rather than leaving the operator to read
-        # it as plain HTTP. Getting this wrong costs real time on an airgapped
-        # appliance, where the message in the GUI is all the operator has.
+        # 403 means BAD REQUEST on this API, not permissions: say so, since the
+        # GUI message is all an airgapped operator has.
         if response.status_code in BAD_REQUEST_STATUS:
             message = (
                 "EfficientIP/APIM returned HTTP {}, which on this API means BAD REQUEST "
@@ -828,11 +680,10 @@ class EfficientipDdiConnector(BaseConnector):
     def _error_detail(self, data, response):
         """Best available explanation of a failure, for the operator.
 
-        The gateway answers with {"message": ...}, but the SOLIDserver backend
-        answers a bad WHERE with a LIST of dicts carrying its own codes
-        ([{"errno": "50028", "sql_error": "7"}]) and no message at all. Those
-        codes are the only lead available on an airgapped appliance, so pull
-        them out rather than letting the whole body fall through as raw text.
+        The gateway answers {"message": ...}; the SOLIDserver backend answers a
+        bad WHERE with a list of dicts carrying its own codes ([{"errno":
+        "50028", "sql_error": "7"}]). Those codes are the only lead on an
+        airgapped appliance, so surface them.
         """
         if isinstance(data, dict) and data:
             return data.get("message") or response.text
@@ -845,10 +696,9 @@ class EfficientipDdiConnector(BaseConnector):
         return response.text
 
     def _ensure_list(self, data, action_result):
-        """_make_rest_call() is assumed to return a bare JSON array for list
-        services -- not yet confirmed against the real APIM, which might wrap
-        results in an envelope instead. Fail with a clear message here rather
-        than a raw KeyError/TypeError on records[0]."""
+        """Fail with a clear message if a list service did not return a bare JSON
+        array, rather than a KeyError/TypeError on records[0].
+        """
         if not isinstance(data, list):
             action_result.set_status(
                 phantom.APP_ERROR,
@@ -862,11 +712,9 @@ class EfficientipDdiConnector(BaseConnector):
     # ---- Auth / Encoding Helpers ----
 
     def _auth_headers(self, config):
-        # Every one of these four is hand-entered into a SOAR text field, and all
-        # four get base64-encoded, so surrounding whitespace survives into the
-        # credential instead of being rejected at entry. A single pasted trailing
-        # newline yields a wrong credential and an HTTP 401 indistinguishable from
-        # a genuinely wrong value.
+        # Credentials are hand-entered and base64-encoded, so stray whitespace
+        # would survive into a wrong credential and an indistinguishable 401:
+        # strip all four.
         client_id = config["client_id"].strip()
         client_secret = config["client_secret"].strip()
         ddi_username = config["ddi_username"].strip()
@@ -884,17 +732,13 @@ class EfficientipDdiConnector(BaseConnector):
     def _validate_ip(self, address, action_result):
         """Validate a caller-supplied address and return its normalised form.
 
-        The dotted address goes on the wire as-is: `hostaddr` is the
-        filterable column for it (sibling of the hex-valued `ip_addr`), so no
-        encoding step is needed. The underscored `host_addr` is NOT a column on
-        the target appliance: it answers with a SQL error (sql_error 7), which
-        a mock seeded with that name had hidden. Normalising still matters for IPv6, where the
-        same address has many spellings and only one compressed form.
+        The dotted address goes on the wire as-is: hostaddr is the filterable
+        column (sibling of the hex ip_addr); host_addr with an underscore is
+        not a column. IPv6 is compressed to its one canonical spelling.
 
-        Returns None (with action_result already failed) for anything that is
-        not a bare IP -- a hostname, CIDR range or typo would otherwise reach
-        the WHERE clause verbatim, or raise a bare ValueError out of the
-        handler.
+        Returns None (action_result already failed) for anything that is not a
+        bare IP: a hostname, CIDR range or typo would otherwise reach the WHERE
+        clause.
         """
         try:
             return str(ipaddress.ip_address(address))
@@ -907,17 +751,13 @@ class EfficientipDdiConnector(BaseConnector):
             return None
 
     def _validate_int(self, value, field_name, action_result):
-        """Coerce a numeric param to a real int, or fail the action.
-
-        SOAR hands numeric params through as float or str often enough that
-        raw interpolation is unsafe: a float 5.0 interpolated into the query
-        string yields limit=5.0, which the backend is not known to accept.
-        Same precedent as proofpoint_trap's _validate_integer().
+        """Coerce a numeric param to a real int, or fail the action (SOAR often
+        hands numerics through as float or str, and limit=5.0 is not safe to
+        interpolate).
         """
         try:
-            # float() first, not int(): SOAR hands a numeric param through as
-            # 1001.0 often enough that int("1001.0") -- which raises -- would
-            # reject the very case this helper exists to absorb.
+            # float() first, not int(): SOAR hands numbers through as 1001.0,
+            # which int("1001.0") rejects.
             as_float = float(str(value).strip())
         except (TypeError, ValueError):
             action_result.set_status(
@@ -941,9 +781,9 @@ class EfficientipDdiConnector(BaseConnector):
         return parsed
 
     def _limit_from(self, param, action_result):
-        """Every list call is bounded -- an unbounded call times out
-        server-side on the real APIM -- but the bound is the caller's to
-        raise, not a hardcoded 1."""
+        """Every list call is bounded; the bound is the caller's to raise, not a
+        hardcoded 1.
+        """
         return self._validate_int(param.get("limit", DEFAULT_LIMIT), "limit", action_result)
 
     def _parse_class_parameters(self, raw):
@@ -960,39 +800,20 @@ class EfficientipDdiConnector(BaseConnector):
     def _bounded_query(self, limit, where=None):
         """Build the query params. `limit` ALWAYS goes on the wire.
 
-        A list call carrying neither WHERE nor limit makes the backend attempt
-        an unbounded full scan and time out server-side, so a bound is
-        mandatory. limit is that bound, and it works server-side alongside a
-        WHERE: confirmed against the real appliance, where a filtered call with
-        limit=1 returns HTTP 200 and exactly one row.
-
-        Do not reintroduce a "never send both" rule here. One was shipped once
-        and disproven -- the curl observation behind it was a shell-quoting
-        artefact, not appliance behaviour. See the UC17 plan.
+        A list call with neither WHERE nor limit scans unbounded and times out
+        server-side. limit works alongside WHERE; do not add a "never send
+        both" rule (it was disproven).
         """
-        # limit FIRST. Every curl confirmed working against the real appliance
-        # puts it first, and this connector was putting it last. Ordering should
-        # not matter to a correct parser -- but "should not matter" is exactly
-        # the kind of assumption that has cost this connector three reverted
-        # theories, and matching the known-good client costs nothing.
+        # limit first, matching every curl known to work against the appliance.
         return {"limit": limit, "WHERE": where} if where else {"limit": limit}
 
     def _select_optional_filter(self, param, filter_map, action_result):
-        """Pick at most one supplied filter, returning (where_column, value).
+        """Pick at most one supplied filter, returning (ok, where_column, value).
 
-        Returns (None, None) when nothing is set, which is a legal call, not an
-        error: ip_block_subnet_list needs no filter params at all -- that bare
-        bounded shape is what test connectivity has always used and the one
-        confirmed to work on the real APIM. It is also what to fall back to
-        when a WHERE clause is rejected by the gateway rather than the backend.
-
-        At most one, never two: the WHERE clause has only ever been confirmed
-        carrying a single column='value' condition, so composing two would be a
-        coded guess of the same kind that shipped as WHERE=name='...'.
-
-        Returns (ok, column, value). ok is False only on the two-filter error,
-        with action_result already failed -- "no filter" is a success with
-        column None, so the caller never has to infer intent from status.
+        No filter is a legal call (a bounded bare list): ok with column None.
+        More than one is refused before any request, since only a single
+        column='value' condition is known to work. ok is False only on that
+        refusal, with action_result already failed.
         """
         supplied = []
         for name in filter_map:

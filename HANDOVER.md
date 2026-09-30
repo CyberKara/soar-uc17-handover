@@ -1,7 +1,7 @@
 # UC17 — EfficientIP DDI Enrichment — Air-Gapped Handover Package
 
 Generated 2026-09-24 12:48 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
-Updated 2026-09-30: connector v1.0.12 and the new `efficientip_ddi_lookup` playbook, built from
+Updated 2026-09-30: connector v1.0.13 and the new `efficientip_ddi_lookup` playbook, built from
 the source repo, not from a fresh export of `soar8`. `efficientip_ddi_enrich` and the asset
 template are unchanged from the 2026-09-24 export.
 
@@ -14,7 +14,7 @@ in an environment with no network access back to this repo or to `soar8`.
 
 | Path | What |
 |------|------|
-| `connectors/` | Connector app package(s): efficientip_ddi-v1.0.12.tgz |
+| `connectors/` | Connector app package(s): efficientip_ddi-v1.0.13.tgz |
 | `connectors/source/` | Same connector(s), extracted — for reading, not for import |
 | `playbooks/*.tgz` (PBs) | efficientip_ddi_enrich, efficientip_ddi_lookup, efficientip_ddi_action_test |
 | `playbooks/source/` | Same CFs/playbooks, extracted — for reading, not for import |
@@ -29,7 +29,7 @@ previous package. On a completely fresh target, skip to Install order.
 
 - **Which of these applies depends on what is already installed — check the Apps list first.** Open Apps and search for `EfficientIP`. If you see **exactly one** app (named `efficientip_ddi` / `EfficientIP DDI`), you installed the 2026-08-31 package or later: this one is a **normal in-place upgrade**. Install it over the existing app — same internal identifier — and your existing asset keeps working with every credential intact. **Do not delete anything and do not re-enter any credential.** If instead you see **two** apps (an `efficientip_ddi` and an `EfficientIP DDI (Classic)`), you are still on a package older than 2026-08-31, and the note below applies to you instead.
 
-- **Connector v1.0.12 fixes a constant HTTP 401 on Test Connectivity.** The connector sent the two SOLIDserver credential headers as `X-DDI-Username` / `X-DDI-Password`; the APIM reads `X-IPM-Username` / `X-IPM-Password`, and with the wrong names every call failed with HTTP 401 and the message "The specified document is not valid JSON data". It also fixes `get ip address`, which filtered on a column (`host_addr`) that does not exist on the appliance; it now uses `hostaddr`. The connector upgrade is a normal in-place one: same app, same asset, no credential to re-enter. Install it over the existing app. One thing to check on the asset: **`base_url` must include the APIM path prefix that comes before `/rest`** (for example `https://apim.example/prefix/segment`); the connector appends `/rest/<service>` to it.
+- **Connector v1.0.12 fixes a constant HTTP 401 on Test Connectivity** (this package carries v1.0.13: the same code, with condensed comments). The connector sent the two SOLIDserver credential headers as `X-DDI-Username` / `X-DDI-Password`; the APIM reads `X-IPM-Username` / `X-IPM-Password`, and with the wrong names every call failed with HTTP 401 and the message "The specified document is not valid JSON data". It also fixes `get ip address`, which filtered on a column (`host_addr`) that does not exist on the appliance; it now uses `hostaddr`. The connector upgrade is a normal in-place one: same app, same asset, no credential to re-enter. Install it over the existing app. One thing to check on the asset: **`base_url` must include the APIM path prefix that comes before `/rest`** (for example `https://apim.example/prefix/segment`); the connector appends `/rest/<service>` to it.
 
 - **Two playbooks are new or changed.** `efficientip_ddi_lookup` is new: an automation playbook, label `efficientip_ddi`, that an analyst launches from a container and that asks for the IP address. `efficientip_ddi_action_test` is now an automation playbook with that label too: it was an input playbook, which an analyst cannot launch from a container. `efficientip_ddi_enrich` is unchanged. Import the two, after creating the label (see the activation step below). If SOAR keeps the old input-type `efficientip_ddi_action_test` after the import, delete it under Playbooks and import it again.
 

@@ -14,17 +14,7 @@ from datetime import datetime, timedelta
 
 
 
-# Design notes (kept here because a VPE save replaces the module docstring):
-# EfficientIP DDI Lookup
-#
-# Automation playbook, label efficientip_ddi, launched by hand from a container.
-# efficientip_ddi_enrich is a data (input) playbook, which an analyst cannot
-# launch from a container, so this playbook is the entry point: it asks for the
-# IP, validates it and calls efficientip_ddi_enrich as a child, which does the
-# lookup and writes the note. Left inactive at import so it never starts on a
-# new container or artifact by itself.
-#
-# Trigger: Manual run by analyst
+# Design notes: docs/usecases/uc17_playbook_implementation_notes.md
 
 ################################################################################
 ## Global Custom Code End
@@ -52,12 +42,9 @@ def ask_ip(action=None, success=None, container=None, results=None, handle=None,
     ################################################################################
     ################################################################################
 
-    # The prompt is raised from code, not from a native prompt block: a native
-    # block needs its approver fixed when the playbook is designed, but this
-    # playbook is launched by hand and must ask whoever launched it, and a VPE
-    # save regenerates prompt blocks whole. The callback continues the flow; the
-    # return below stops the generated call to read_ip from also running right
-    # away.
+    # Raised from code, not a native prompt block: the approver must be whoever
+    # launched the playbook. The return stops the generated call to read_ip,
+    # which the prompt's callback makes instead.
     user = None
     try:
         user_id = phantom.get_effective_user()
@@ -144,8 +131,7 @@ def read_ip(action=None, success=None, container=None, results=None, handle=None
     else:
         phantom.error("No approval record found for playbook_run {}".format(run_id))
 
-    # One address only: a hostname, CIDR range or URL is refused here, before the
-    # child playbook and the SOLIDserver lookup are started.
+    # One address only: refuse a hostname, CIDR range or URL before the child starts.
     import ipaddress
 
     ip = None
@@ -205,10 +191,8 @@ def run_enrich(action=None, success=None, container=None, results=None, handle=N
 
     ip = json.loads(phantom.get_run_data(key="read_ip:ip") or '""')
 
-    # efficientip_ddi_enrich is a data playbook with one input, ip. It looks the
-    # address up and writes the "EfficientIP DDI Enrichment" note itself. The
-    # callback makes this run wait for it; the return stops the generated call to
-    # finish_lookup from also running right away.
+    # The callback makes this run wait for the child, which writes the enrichment
+    # note itself. The return stops the generated call to finish_lookup.
     phantom.playbook(
         playbook="local/efficientip_ddi_enrich",
         container=container,

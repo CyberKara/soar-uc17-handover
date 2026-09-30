@@ -301,12 +301,12 @@ cd soar8/migration/mock-backend && ./mock_start.sh ddi
 
 **v1.0.12 and the mock.** The connector now sends `X-IPM-Username` /
 `X-IPM-Password` and filters `get ip address` on `hostaddr`. The mock and the
-unit suite live outside this package and were **not** changed with it. Until the
-mock reads the `X-IPM-*` names (it read `X-DDI-*`) and its `ip_address_list`
-filters on `hostaddr` (it was seeded with `host_addr`), Test Connectivity against
-the mock answers HTTP 401 and `get ip address` fails. The same two names are
-pinned in the unit suite, so those tests need the same update, and so does the
-source repo this package is exported from, or its next export reverts this fix.
+unit suite are not part of this package. In the source repo they were updated
+with it: the mock reads the `X-IPM-*` names and filters `hostaddr`, and both
+suites pin the names. A mock copy deployed before that, including a running lab
+mock service, still demands `X-DDI-*` and seeds `host_addr`: against it Test
+Connectivity answers HTTP 401 and `get ip address` fails until that copy is
+replaced and restarted.
 
 Point the asset at `https://<mock-host>:8447` — **never** `127.0.0.1`/`localhost`,
 the mock runs cross-host on the ansible controller — with
@@ -369,6 +369,15 @@ also accept `name`.
   Percent-encoding of the `WHERE` clause and the `limit` parameter are both
   ruled out, and the `403 = bad request` mapping rules out every remaining
   query-shaped explanation.
+
+## v1.0.13 (2026-09-30) — comments and README only
+
+No functional change from v1.0.12: the code is identical. Source comments and
+docstrings are condensed to short explanations of the current behaviour, with the
+reasoning and investigation history moved to `docs/efficientip_ddi_implementation_notes.md`;
+a few manifest descriptions are shortened (the `client_ca` one no longer says "system
+CAs"); and the README's note on the mock and the unit suite is brought up to date. A
+v1.0.12 install needs no action.
 
 ## v1.0.12 (2026-09-30) — backend-auth header names, `hostaddr`
 

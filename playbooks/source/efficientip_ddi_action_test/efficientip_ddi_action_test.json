@@ -4,7 +4,7 @@
   "category": "Investigation",
   "coa": {
     "data": {
-      "description": "Diagnostic automation playbook, launched by hand from a container with label efficientip_ddi, exercising all 3 efficientip_ddi actions (test connectivity, get ip address, list subnets) against known-good mock seed values, in 3 independent parallel branches, each writing its own pass/fail note. Built after the SOAR App Debugger view was found to be unreliable for SDK apps (see memory project-soar85-app-debugger-sdk-action-not-found) -- gives a repeatable way to validate the connector through the real action_run dispatch path.",
+      "description": "Diagnostic automation playbook, launched by hand from a container with label efficientip_ddi. Exercises all 3 efficientip_ddi actions (test connectivity, get ip address, list subnets) against known-good mock seed values, in 3 independent parallel branches, each writing its own pass/fail note.",
       "edges": [
         {
           "id": "port_0_to_port_2",

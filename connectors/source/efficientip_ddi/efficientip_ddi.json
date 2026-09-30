@@ -10,8 +10,8 @@
     "logo_dark": "logo_dark.svg",
     "publisher": "Ted",
     "license": "Copyright (c) 2026",
-    "app_version": "1.0.12",
-    "utctime_updated": "2026-09-30T19:53:56.000000Z",
+    "app_version": "1.0.13",
+    "utctime_updated": "2026-09-30T22:18:37.000000Z",
     "package_name": "phantom_efficientip_ddi",
     "main_module": "efficientip_ddi_connector.py",
     "min_phantom_version": "6.4.1",
@@ -68,7 +68,7 @@
             "order": 7
         },
         "client_ca": {
-            "description": "PEM CA bundle to verify APIM's server certificate (optional -- blank uses system CAs)",
+            "description": "PEM CA bundle to verify APIM's server certificate (optional -- blank uses the HTTP library's CA bundle)",
             "data_type": "string",
             "required": false,
             "order": 8
@@ -95,7 +95,7 @@
             "order": 11
         },
         "user_agent": {
-            "description": "User-Agent header. Blank keeps the HTTP library default. Was a curl-string test knob for a 401 theory that the 2026-09-02 client bisect disproved (no UA correlation with outcome, root cause is an APIM/backend fault) -- shipping it forged on every request by default with no ongoing purpose, fixed to blank",
+            "description": "User-Agent header sent on every request. Blank keeps the HTTP library default.",
             "data_type": "string",
             "required": false,
             "default": "",
@@ -137,7 +137,7 @@
                     ]
                 },
                 "limit": {
-                    "description": "Maximum number of records to return (default 1). Must be a positive whole number -- an unbounded call times out server-side on the real APIM, so a limit always goes on the wire.",
+                    "description": "Maximum number of records to return (default 1). A limit always goes on the wire: an unbounded list call times out server-side.",
                     "data_type": "numeric",
                     "required": false,
                     "default": 1,
@@ -238,7 +238,7 @@
         {
             "action": "list subnets",
             "identifier": "list_subnets",
-            "description": "Look up subnets in SOLIDserver's IPAM (parent, space, address range, size, class) for enrichment. Only 'limit' need be set: with no filter this lists subnets bare, the same shape test connectivity uses. Optionally set AT MOST ONE filter: subnet_name, subnet_id, parent_subnet_name (lists the subnets under a parent) or site_name (lists the subnets in a space). Raise 'limit' above the default of 1 to see more than one row, which the parent/site filters and the unfiltered call usually need. Output field names follow ip_address_list's confirmed subnet_* conventions but ip_block_subnet_list's own field set is not independently vendor-confirmed -- check raw_json if a named field comes back empty.",
+            "description": "Look up subnets in SOLIDserver's IPAM (parent, space, address range, size, class) for enrichment. With no filter this lists subnets bare, bounded by 'limit' (default 1; raise it to see more than one row). Optionally set AT MOST ONE filter: subnet_name, subnet_id, parent_subnet_name (the subnets under a parent) or site_name (the subnets in a space). Field names beyond the confirmed ones may differ: check raw_json if a named field comes back empty.",
             "type": "investigate",
             "read_only": true,
             "parameters": {
@@ -267,7 +267,7 @@
                     "order": 3
                 },
                 "limit": {
-                    "description": "Maximum number of records to return (default 1). Must be a positive whole number -- an unbounded call times out server-side on the real APIM, so a limit always goes on the wire.",
+                    "description": "Maximum number of records to return (default 1). A limit always goes on the wire: an unbounded list call times out server-side.",
                     "data_type": "numeric",
                     "required": false,
                     "default": 1,

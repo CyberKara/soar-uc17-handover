@@ -56,16 +56,22 @@ BAD_REQUEST_STATUS = frozenset({400, 403})
 # re-asking a question already answered.
 RETRYABLE_STATUS = frozenset({HTTP_STATUS_UNAUTHORIZED})
 
-# Total attempts, including the first. Operator-tunable per asset because the
-# right value depends on the cause, which is still open: a load-balanced node
-# with inconsistent trust wants more attempts, a quota policy wants fewer.
+# A 401 is NOT retried when the gateway reports it reached the backend
+# (X-Backside-Transport "OK OK"): that 401 is SOLIDserver's own credential
+# verdict. The transient one carries "FAIL FAIL" -- the APIM's backend leg
+# failed and the gateway synthesised the 401 (appliance, 2026-09-02).
+BACKSIDE_TRANSPORT_HEADER = "X-Backside-Transport"
+# IBM API Connect's per-call id; the APIM administrator traces a call by it.
+APIM_TRANS_ID_HEADER = "APIm-Debug-Trans-Id"
+
+# Total attempts, including the first. Operator-tunable per asset: at the
+# measured ~33% transient failure rate, 3 attempts leave ~3.6% failing.
 DEFAULT_RETRY_COUNT = 3
 MAX_RETRY_COUNT = 10
 
 # Base seconds between attempts; the wait grows linearly (1x, 2x, 3x ...).
 # Backoff rather than immediate re-fire because rapid repeated auth failures
-# are what trips gateway lockout and quota policies -- and because if the cause
-# is an auth-cache TTL gap, the wait is the part that actually helps.
+# are what trips gateway lockout and quota policies.
 DEFAULT_RETRY_BACKOFF = 2.0
 MAX_RETRY_BACKOFF = 30.0
 

@@ -55,7 +55,11 @@
 # marker strings. gitleaks itself is not installed where this edit was made, so
 # the pin has NOT been run through the scanner -- run it before the next push
 # to a public remote.
-connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:1029
+# 2026-10-01 - repinned for v1.0.14 (IPv6 message, 401 split, debug guard,
+# docstrings): 1029 -> 1097. Scanned with this file moved aside (gitleaks 8.30.1):
+# the hit is the block_types delimiter tuple in _normalize_pem(), no key bytes,
+# and zero base64 runs over 60 chars anywhere in the package.
+connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:1097
 
 # False positive: SOAR's own VPE-generated node bookkeeping field, not a
 # credential. Every decision/filter block's condition gets a
@@ -80,3 +84,9 @@ connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:1029
 playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:138
 playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:155
 playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:188
+# 2026-10-01 - efficientip_ddi_action_test was rebuilt in the 8.6 VPE shape, so
+# its three action blocks now carry the same unused loop-condition
+# comparisonKey placeholder (key suffix 0; verified: nothing else on these lines).
+playbooks/source/efficientip_ddi_action_test/efficientip_ddi_action_test.json:generic-api-key:127
+playbooks/source/efficientip_ddi_action_test/efficientip_ddi_action_test.json:generic-api-key:209
+playbooks/source/efficientip_ddi_action_test/efficientip_ddi_action_test.json:generic-api-key:300

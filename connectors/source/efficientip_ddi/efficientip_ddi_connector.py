@@ -33,6 +33,8 @@ from phantom.action_result import ActionResult
 from phantom.base_connector import BaseConnector
 
 from efficientip_ddi_consts import (
+    APIM_TRANS_ID_HEADER,
+    BACKSIDE_TRANSPORT_HEADER,
     BAD_REQUEST_STATUS,
     DDI_PASSWORD_HEADER,
     DDI_USERNAME_HEADER,
@@ -139,9 +141,15 @@ class EfficientipDdiConnector(BaseConnector):
         if records is None:
             return action_result.get_status()
         if not records:
-            return action_result.set_status(
-                phantom.APP_ERROR, "No IP address record found in SOLIDserver for {}".format(address)
-            )
+            message = "No IP address record found in SOLIDserver for {}".format(address)
+            if ipaddress.ip_address(query_addr).version == 6:
+                # hostaddr is confirmed for IPv4 only. Whether this service
+                # holds IPv6 at all, and in which spelling, is unverified.
+                message += (
+                    " (IPv6: lookups are unverified on this API -- SOLIDserver may keep "
+                    "IPv6 addresses outside ip_address_list, so not found is not proof of absence)"
+                )
+            return action_result.set_status(phantom.APP_ERROR, message)
 
         # Raw pass-through, not a curated field mapping: the real API's own
         # field names have been wrong under manual mapping multiple times
@@ -254,9 +262,20 @@ class EfficientipDdiConnector(BaseConnector):
         day. Hence a toggle rather than a deletion -- off by default, one
         checkbox to get it back.
         """
-        if not self.get_config().get("debug_logging"):
+        if not self._debug_enabled():
             return
         self.save_progress("DEBUG GUI: {}".format(message))
+
+    def _debug_enabled(self):
+        """True when the asset asked for the diagnostic log.
+
+        Callers that do real work only to feed _dbg() -- a DNS lookup, PEM
+        hashing, environment probing -- check this first. Formatting the
+        message evaluates its arguments before _dbg() can discard it, so an
+        unguarded `self._dbg("dns: {}".format(self._resolve_peers(url)))` ran a
+        getaddrinfo() on every call with logging off.
+        """
+        return bool(self.get_config().get("debug_logging"))
 
     def _body_preview(self, text):
         """Render a body for the log, flagging truncation explicitly.
@@ -369,20 +388,19 @@ class EfficientipDdiConnector(BaseConnector):
     def _dbg_curl_equivalent(self, response):
         """Print the curl that reproduces this exact request.
 
-        The user's hand-run curl succeeds where this connector 401s. That is
-        the whole problem, and arguing about it from here cannot settle it --
-        running both against the same appliance can. So emit the real request
-        as a runnable curl: same URL and query encoding (read back off the
-        PreparedRequest, not off our intent), same headers, same client cert.
+        Built when a hand-run curl was believed to succeed where this connector
+        401'd. The 2026-09-02 bisect showed bare curl failing just as often, so
+        the premise is gone, but replaying the exact request outside SOAR is
+        still the fastest way to separate the client from the gateway. Same URL
+        and query encoding (read back off the PreparedRequest, not off our
+        intent), same headers, same client cert.
 
         Credentials are NOT printed. The three auth headers come out as shell
         variables so the line is runnable once they are exported, without the
         log ever carrying a secret.
 
-        If that curl succeeds while this connector 401s on the same appliance
-        seconds apart, the fault is in this HTTP client and nowhere else. If it
-        fails the same way, the fault is in what we are sending, which the same
-        line makes visible.
+        Compare outcomes over several repeats of each, never one shot: the
+        gateway fault is intermittent.
         """
         try:
             sent = getattr(response, "request", None)
@@ -556,13 +574,10 @@ class EfficientipDdiConnector(BaseConnector):
     def _log_idle_gap(self):
         """Log how long since the last call that succeeded.
 
-        This is the one number that separates the three surviving explanations
-        for the intermittent 401, because each predicts a different
-        relationship to it: an auth-cache expiry fails after a GAP, a quota
-        policy fails under a BURST (the opposite), and a load-balanced node
-        with inconsistent trust correlates with neither -- it shows up in the
-        peer address instead. Recorded on every call so a failing one can be
-        compared against a succeeding one.
+        Kept from the 401 hunt: an auth-cache expiry would fail after a GAP and
+        a quota policy under a BURST. The appliance showed neither (paced and
+        burst calls failed at the same ~33%), and the cause turned out to be
+        the APIM's backend leg. Still useful if a new failure pattern appears.
         """
         last = self._state.get("last_success_epoch") if isinstance(self._state, dict) else None
         if not last:
@@ -580,11 +595,13 @@ class EfficientipDdiConnector(BaseConnector):
     def _make_rest_call(self, method, path, params, action_result):
         """Execute an APIM call with mTLS cert setup + 3-layer auth, cleanup.
 
-        Retries an HTTP 401 up to the asset's configured attempt count. Every
-        attempt is logged individually, and a call that only succeeded on a
-        later attempt says so in the action result rather than passing silently
-        -- the intermittency is an open investigation, so the retry has to stay
-        visible instead of papering over the evidence.
+        Retries an HTTP 401 up to the asset's configured attempt count, unless
+        the gateway reports that it reached its backend (then the 401 is
+        SOLIDserver's real answer). The transient 401 is the APIM's backend leg
+        failing (X-Backside-Transport: FAIL FAIL), which no client change fixes;
+        a retry re-picks a backend member. A call that only succeeded on a later
+        attempt says so in the action result, so the fault stays visible to the
+        operator who has to escalate it.
 
         Returns:
             tuple: (status, response_data) - RetVal pattern
@@ -603,27 +620,26 @@ class EfficientipDdiConnector(BaseConnector):
         # wrong names (see DDI_USERNAME_HEADER in the consts).
         headers["Accept"] = "application/json"
         # Both from the vendor's own documented CURLOPT set for these services.
-        # no-cache is the interesting one: the vendor's reference client asks for
-        # a fresh answer on every call, which says caching is a live concern
-        # somewhere on this path. That is *consistent with* one of the surviving
-        # explanations for the intermittent 401 (an auth/response cache), but it
-        # is not evidence for it and this header is not a fix -- it is here
-        # because matching the reference client costs nothing and removes one
-        # difference between us and the only implementation known to work.
+        # Matching the vendor's reference client costs nothing and removes one
+        # difference between us and it. Not a fix for anything: the transient
+        # 401 is the APIM's backend leg failing.
         headers["Cache-Control"] = "no-cache"
 
         cert_path = key_path = ca_path = None
         session = None
         try:
-            self._dbg("=== request {} {} ===".format(method, url))
-            self._dbg("params: {}".format(params if params else "(none)"))
-            self._dbg("request headers: {}".format(self._format_headers(headers)))
-            self._dbg("dns: {}".format(self._resolve_peers(url)))
+            debug = self._debug_enabled()
+            if debug:
+                self._dbg("=== request {} {} ===".format(method, url))
+                self._dbg("params: {}".format(params if params else "(none)"))
+                self._dbg("request headers: {}".format(self._format_headers(headers)))
+                self._dbg("dns: {}".format(self._resolve_peers(url)))
 
             cert_path, key_path, ca_path = self._setup_cert_files()
-            self._dbg("client_cert {}".format(self._fingerprint(config.get("client_cert", ""))))
-            self._dbg("client_key  {}".format(self._fingerprint(config.get("client_key", ""))))
-            self._dbg("client_ca   {}".format(self._fingerprint(config.get("client_ca", ""))))
+            if debug:
+                self._dbg("client_cert {}".format(self._fingerprint(config.get("client_cert", ""))))
+                self._dbg("client_key  {}".format(self._fingerprint(config.get("client_key", ""))))
+                self._dbg("client_ca   {}".format(self._fingerprint(config.get("client_ca", ""))))
 
             verify_ssl = config.get("verify_ssl", True)
             verify = ca_path if (verify_ssl and ca_path) else verify_ssl
@@ -646,7 +662,8 @@ class EfficientipDdiConnector(BaseConnector):
 
             attempts, backoff = self._retry_plan()
             self._log_idle_gap()
-            self._dbg_ambient_env()
+            if debug:
+                self._dbg_ambient_env()
             self._dbg("retry plan: up to {} attempt(s), {}s linear backoff, retrying {}".format(
                 attempts, backoff, sorted(RETRYABLE_STATUS),
             ))
@@ -682,7 +699,7 @@ class EfficientipDdiConnector(BaseConnector):
                     stream=True,
                 )
                 headers_ms = (time.monotonic() - started) * 1000
-                peer = self._peer_address(response)
+                peer = self._peer_address(response) if debug else "unavailable"
                 response.content  # noqa: B018 - forces the read, releases the connection
                 elapsed_ms = (time.monotonic() - started) * 1000
 
@@ -691,11 +708,22 @@ class EfficientipDdiConnector(BaseConnector):
                 # one, so the good ones have to be on the record too. Splitting
                 # the two timings separates a slow gateway decision (headers)
                 # from a slow body transfer, and both from a fast reject.
-                self._dbg_exchange(response, peer, headers_ms, elapsed_ms, attempt, attempts)
-                if attempt == 1:
-                    self._dbg_curl_equivalent(response)
+                if debug:
+                    self._dbg_exchange(response, peer, headers_ms, elapsed_ms, attempt, attempts)
+                    if attempt == 1:
+                        self._dbg_curl_equivalent(response)
 
                 if response.status_code not in RETRYABLE_STATUS:
+                    break
+
+                if self._backend_leg_ok(response):
+                    # The gateway reached SOLIDserver and passed its 401 back:
+                    # the backend itself rejected the X-IPM credentials. That is
+                    # deterministic, and repeating it is what trips lockout.
+                    self._dbg("HTTP {} with {}: {} -- backend answered, not retrying".format(
+                        response.status_code, BACKSIDE_TRANSPORT_HEADER,
+                        response.headers.get(BACKSIDE_TRANSPORT_HEADER),
+                    ))
                     break
 
                 if attempt == attempts:
@@ -716,8 +744,8 @@ class EfficientipDdiConnector(BaseConnector):
                 if attempt > 1:
                     # Surfaced through save_progress, not only the debug log:
                     # a result that reads as a clean success while the gateway
-                    # is rejecting a third of its calls hides the very symptom
-                    # under investigation.
+                    # is failing a third of its calls hides a fault the APIM
+                    # administrator needs to hear about.
                     self.save_progress(
                         "Succeeded on attempt {} of {} (earlier attempt(s) returned HTTP {})".format(
                             attempt, attempts, HTTP_STATUS_UNAUTHORIZED,
@@ -816,9 +844,10 @@ class EfficientipDdiConnector(BaseConnector):
                 "credentials: {}".format(response.status_code, detail)
             )
         elif response.status_code == HTTP_STATUS_UNAUTHORIZED:
-            message = (
-                "EfficientIP/APIM returned HTTP 401 (unauthorized) on all {} attempt(s): "
-                "{}".format(attempts, detail)
+            message = "EfficientIP/APIM returned HTTP 401 (unauthorized){}: {}{}".format(
+                "" if self._backend_leg_ok(response) else " on all {} attempt(s)".format(attempts),
+                detail,
+                self._unauthorized_hint(response),
             )
         else:
             message = "EfficientIP/APIM returned HTTP {}: {}".format(response.status_code, detail)
@@ -843,6 +872,45 @@ class EfficientipDdiConnector(BaseConnector):
             if fields:
                 return "SOLIDserver error ({})".format(fields)
         return response.text
+
+    def _backend_leg_ok(self, response):
+        """True when the gateway says it reached its backend on this call.
+
+        IBM API Connect / DataPower reports the backend leg in
+        X-Backside-Transport: "OK OK" when the gateway reached SOLIDserver,
+        "FAIL FAIL" when it did not. A 401 under "OK OK" is the backend's own
+        answer -- a real credential rejection. Only that case returns True: a
+        FAIL, or no header at all, stays retryable, because the one captured
+        transient 401 was a FAIL FAIL and nobody has seen what every other one
+        carries.
+        """
+        tokens = (response.headers.get(BACKSIDE_TRANSPORT_HEADER) or "").upper().split()
+        return bool(tokens) and all(token == "OK" for token in tokens)
+
+    def _unauthorized_hint(self, response):
+        """What a 401 means, read off the gateway's own headers.
+
+        The operator on the airgapped appliance sees only this message, and the
+        two causes need opposite actions: fix the asset, or escalate to the
+        APIM administrator with the transaction id.
+        """
+        backside = response.headers.get(BACKSIDE_TRANSPORT_HEADER)
+        trans_id = response.headers.get(APIM_TRANS_ID_HEADER)
+        trans = " {}={}".format(APIM_TRANS_ID_HEADER, trans_id) if trans_id else ""
+        if self._backend_leg_ok(response):
+            return (
+                " -- {}: {}, so SOLIDserver itself rejected the request: check "
+                "ddi_username/ddi_password on the asset.{}".format(BACKSIDE_TRANSPORT_HEADER, backside, trans)
+            )
+        if backside and "FAIL" in backside.upper():
+            return (
+                " -- {}: {}, so the APIM could not reach its backend and answered 401 "
+                "itself. Not a credential problem: escalate to the APIM administrator "
+                "with this call's transaction id.{}".format(BACKSIDE_TRANSPORT_HEADER, backside, trans)
+            )
+        return " -- no {} header: check client_id/client_secret and the client certificate.{}".format(
+            BACKSIDE_TRANSPORT_HEADER, trans,
+        )
 
     def _ensure_list(self, data, action_result):
         """_make_rest_call() is assumed to return a bare JSON array for list

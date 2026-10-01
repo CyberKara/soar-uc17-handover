@@ -84,7 +84,8 @@
                         "functionName": "on_start"
                     },
                     "type": "start",
-                    "errors": {}
+                    "errors": {},
+                    "warnings": {}
                 },
                 "1": {
                     "x": 190,
@@ -101,7 +102,8 @@
                     },
                     "type": "end",
                     "errors": {},
-                    "userCode": "\n"
+                    "userCode": "    ################################################################################\n\n    # Populate the generated `output` dict; the save after Custom Code End emits it.\n    # A branch that recorded nothing stopped before its note: report it FAIL.\n    for key in (\"test_connectivity\", \"get_ip_address\", \"list_subnets\"):\n        raw = phantom.get_run_data(key=key)\n        output[key] = json.loads(raw) if raw else \"FAIL\"\n    output[\"status\"] = \"pass\" if all(\n        output[key] == \"PASS\" for key in (\"test_connectivity\", \"get_ip_address\", \"list_subnets\")\n    ) else \"fail\"\n\n    ################################################################################\n",
+                    "warnings": {}
                 },
                 "2": {
                     "x": 0,
@@ -109,13 +111,38 @@
                     "id": "2",
                     "data": {
                         "id": "2",
+                        "tab": "byConnector",
+                        "loop": {
+                            "enabled": false,
+                            "pauseUnit": "m",
+                            "conditions": [
+                                {
+                                    "type": "if",
+                                    "logic": "and",
+                                    "comparisons": [
+                                        {
+                                            "op": "==",
+                                            "param": "",
+                                            "value": "",
+                                            "comparisonKey": "comparison_key_0"
+                                        }
+                                    ],
+                                    "conditionKey": "condition_key_0",
+                                    "conditionIndex": 0
+                                }
+                            ],
+                            "pauseValue": 2,
+                            "exitAfterUnit": "m",
+                            "exitLoopAfter": 2,
+                            "exitAfterValue": 10,
+                            "exitConditionEnabled": false
+                        },
                         "type": "action",
                         "action": "test connectivity",
                         "advanced": {
                             "join": [],
-                            "note": "Smoke-test branch A of 3 -- see docs/usecases/uc17_efficientip_ddi_enrich_implementation_plan.md.",
                             "customName": "run test connectivity",
-                            "description": "Exercise 'test connectivity' against the connector's mock asset.",
+                            "description": "Run 'test connectivity' on the selected EfficientIP DDI asset.",
                             "customNameId": 0
                         },
                         "connector": "EfficientIP DDI",
@@ -131,7 +158,8 @@
                         "requiredParameters": []
                     },
                     "type": "action",
-                    "errors": {}
+                    "errors": {},
+                    "warnings": {}
                 },
                 "3": {
                     "x": 0,
@@ -142,9 +170,8 @@
                         "type": "code",
                         "advanced": {
                             "join": [],
-                            "note": "Reads run_test_connectivity's own action_result and writes a note.",
                             "customName": "note test connectivity",
-                            "description": "Write a pass/fail note for the test connectivity branch.",
+                            "description": "Write the PASS/FAIL note for test connectivity.",
                             "customNameId": 0
                         },
                         "functionId": 2,
@@ -157,7 +184,8 @@
                     },
                     "type": "code",
                     "errors": {},
-                    "userCode": "    ################################################################################\n\n    result = phantom.collect2(\n        container=container,\n        datapath=[\n            \"run_test_connectivity:action_result.status\",\n            \"run_test_connectivity:action_result.message\",\n        ]\n    )\n    status, message = (result[0][0], result[0][1]) if result else (\"not run\", \"\")\n    mark = \"PASS\" if status == \"success\" else \"FAIL\"\n\n    phantom.add_note(\n        container=container,\n        note_type=\"general\",\n        title=\"efficientip_ddi action test - test connectivity - {}\".format(mark),\n        content=\"**test connectivity:** {}\\n\\n{}\".format(mark, message),\n    )\n\n    ################################################################################\n"
+                    "userCode": "    ################################################################################\n\n    result = phantom.collect2(\n        container=container,\n        datapath=[\n            \"run_test_connectivity:action_result.status\",\n            \"run_test_connectivity:action_result.message\",\n        ],\n        action_results=results,\n    )\n    # No action result means SOAR refused to dispatch the action (it creates no\n    # app_run); the reason is in this playbook run's log, not in a result.\n    status, message = (result[0][0], result[0][1]) if result else (\n        \"failed\", \"No action result: SOAR did not dispatch the action. See this playbook run's log for the reason.\",\n    )\n    mark = \"PASS\" if status == \"success\" else \"FAIL\"\n\n    phantom.add_note(\n        container=container,\n        note_type=\"general\",\n        title=\"efficientip_ddi action test - test connectivity - {}\".format(mark),\n        content=\"**test connectivity:** {}\\n\\n{}\".format(mark, message or \"\"),\n        note_format=\"markdown\",\n    )\n    phantom.save_run_data(key=\"test_connectivity\", value=json.dumps(mark))\n\n    ################################################################################\n",
+                    "warnings": {}
                 },
                 "4": {
                     "x": 340,
@@ -165,20 +193,45 @@
                     "id": "4",
                     "data": {
                         "id": "4",
+                        "tab": "byConnector",
+                        "loop": {
+                            "enabled": false,
+                            "pauseUnit": "m",
+                            "conditions": [
+                                {
+                                    "type": "if",
+                                    "logic": "and",
+                                    "comparisons": [
+                                        {
+                                            "op": "==",
+                                            "param": "",
+                                            "value": "",
+                                            "comparisonKey": "comparison_key_0"
+                                        }
+                                    ],
+                                    "conditionKey": "condition_key_0",
+                                    "conditionIndex": 0
+                                }
+                            ],
+                            "pauseValue": 2,
+                            "exitAfterUnit": "m",
+                            "exitLoopAfter": 2,
+                            "exitAfterValue": 10,
+                            "exitConditionEnabled": false
+                        },
                         "type": "action",
                         "action": "get ip address",
                         "advanced": {
                             "join": [],
-                            "note": "Smoke-test branch B of 3. Static test address 10.20.30.40 (mock seed record), so the found path is exercised.",
                             "customName": "run get ip address",
-                            "description": "Exercise 'get ip address' against a known-good seed IP.",
+                            "description": "Run 'get ip address' on the ip input (blank: the mock seed 10.20.30.40).",
                             "customNameId": 0
                         },
                         "connector": "EfficientIP DDI",
                         "actionType": "investigate",
                         "functionId": 3,
                         "parameters": {
-                            "address": "10.20.30.40"
+                            "address": "playbook_input:ip"
                         },
                         "connectorId": "33986f6c-2005-4c3a-aa8b-d7a83caa76d0",
                         "functionName": "run_get_ip_address",
@@ -195,7 +248,9 @@
                         ]
                     },
                     "type": "action",
-                    "errors": {}
+                    "errors": {},
+                    "userCode": "    ################################################################################\n\n    # Blank input: the lab mock's seed record 10.20.30.40, which carries every\n    # field (hostname, MAC, description), so the found path is exercised.\n    parameters = [item for item in parameters if item.get(\"address\")] or [{\"address\": \"10.20.30.40\"}]\n\n    ################################################################################\n",
+                    "warnings": {}
                 },
                 "6": {
                     "x": 340,
@@ -206,9 +261,8 @@
                         "type": "code",
                         "advanced": {
                             "join": [],
-                            "note": "Reads run_get_ip_address's own action_result and writes a note.",
                             "customName": "note get ip address",
-                            "description": "Write a pass/fail note for the get ip address branch.",
+                            "description": "Write the PASS/FAIL note for get ip address.",
                             "customNameId": 0
                         },
                         "functionId": 5,
@@ -221,7 +275,8 @@
                     },
                     "type": "code",
                     "errors": {},
-                    "userCode": "    ################################################################################\n\n    result = phantom.collect2(\n        container=container,\n        datapath=[\n            \"run_get_ip_address:action_result.status\",\n            \"run_get_ip_address:action_result.message\",\n        ]\n    )\n    status, message = (result[0][0], result[0][1]) if result else (\"not run\", \"\")\n    mark = \"PASS\" if status == \"success\" else \"FAIL\"\n\n    phantom.add_note(\n        container=container,\n        note_type=\"general\",\n        title=\"efficientip_ddi action test - get ip address - {}\".format(mark),\n        content=\"**get ip address:** {}\\n\\n{}\".format(mark, message),\n    )\n\n    ################################################################################\n"
+                    "userCode": "    ################################################################################\n\n    result = phantom.collect2(\n        container=container,\n        datapath=[\n            \"run_get_ip_address:action_result.status\",\n            \"run_get_ip_address:action_result.message\",\n            \"run_get_ip_address:action_result.parameter.address\",\n        ],\n        action_results=results,\n    )\n    # No action result means SOAR refused to dispatch the action (it creates no\n    # app_run); the reason is in this playbook run's log, not in a result.\n    status, message, address = (result[0][0], result[0][1], result[0][2]) if result else (\n        \"failed\", \"No action result: SOAR did not dispatch the action. See this playbook run's log for the reason.\", \"\",\n    )\n    mark = \"PASS\" if status == \"success\" else \"FAIL\"\n\n    phantom.add_note(\n        container=container,\n        note_type=\"general\",\n        title=\"efficientip_ddi action test - get ip address - {}\".format(mark),\n        content=\"**get ip address:** {}\\n\\n**Address:** {}\\n\\n{}\".format(mark, address or \"\", message or \"\"),\n        note_format=\"markdown\",\n    )\n    phantom.save_run_data(key=\"get_ip_address\", value=json.dumps(mark))\n\n    ################################################################################\n",
+                    "warnings": {}
                 },
                 "7": {
                     "x": 680,
@@ -229,20 +284,45 @@
                     "id": "7",
                     "data": {
                         "id": "7",
+                        "tab": "byConnector",
+                        "loop": {
+                            "enabled": false,
+                            "pauseUnit": "m",
+                            "conditions": [
+                                {
+                                    "type": "if",
+                                    "logic": "and",
+                                    "comparisons": [
+                                        {
+                                            "op": "==",
+                                            "param": "",
+                                            "value": "",
+                                            "comparisonKey": "comparison_key_0"
+                                        }
+                                    ],
+                                    "conditionKey": "condition_key_0",
+                                    "conditionIndex": 0
+                                }
+                            ],
+                            "pauseValue": 2,
+                            "exitAfterUnit": "m",
+                            "exitLoopAfter": 2,
+                            "exitAfterValue": 10,
+                            "exitConditionEnabled": false
+                        },
                         "type": "action",
                         "action": "list subnets",
                         "advanced": {
                             "join": [],
-                            "note": "Smoke-test branch C of 3. Static test name CORP_LAN-USERS (mock seed; subnet names are labels, not CIDRs).",
                             "customName": "run list subnets",
-                            "description": "Exercise 'list subnets' against a known-good seed subnet name.",
+                            "description": "Run 'list subnets' on the subnet_name input (blank: the mock seed CORP_LAN-USERS).",
                             "customNameId": 0
                         },
                         "connector": "EfficientIP DDI",
                         "actionType": "investigate",
                         "functionId": 6,
                         "parameters": {
-                            "subnet_name": "CORP_LAN-USERS"
+                            "subnet_name": "playbook_input:subnet_name"
                         },
                         "connectorId": "33986f6c-2005-4c3a-aa8b-d7a83caa76d0",
                         "functionName": "run_list_subnets",
@@ -253,7 +333,9 @@
                         "requiredParameters": []
                     },
                     "type": "action",
-                    "errors": {}
+                    "errors": {},
+                    "userCode": "    ################################################################################\n\n    # Blank input: the lab mock's seed subnet. Subnet names are LABELS, not\n    # CIDRs -- a subnet's address lives in its range fields, never in its name.\n    parameters = [item for item in parameters if item.get(\"subnet_name\")] or [{\"subnet_name\": \"CORP_LAN-USERS\"}]\n\n    ################################################################################\n",
+                    "warnings": {}
                 },
                 "8": {
                     "x": 680,
@@ -264,9 +346,8 @@
                         "type": "code",
                         "advanced": {
                             "join": [],
-                            "note": "Reads run_list_subnets's own action_result and writes a note.",
                             "customName": "note list subnets",
-                            "description": "Write a pass/fail note for the list subnets branch.",
+                            "description": "Write the PASS/FAIL note for list subnets.",
                             "customNameId": 0
                         },
                         "functionId": 7,
@@ -279,20 +360,69 @@
                     },
                     "type": "code",
                     "errors": {},
-                    "userCode": "    ################################################################################\n\n    result = phantom.collect2(\n        container=container,\n        datapath=[\n            \"run_list_subnets:action_result.status\",\n            \"run_list_subnets:action_result.message\",\n        ]\n    )\n    status, message = (result[0][0], result[0][1]) if result else (\"not run\", \"\")\n    mark = \"PASS\" if status == \"success\" else \"FAIL\"\n\n    phantom.add_note(\n        container=container,\n        note_type=\"general\",\n        title=\"efficientip_ddi action test - list subnets - {}\".format(mark),\n        content=\"**list subnets:** {}\\n\\n{}\".format(mark, message),\n    )\n\n    ################################################################################\n"
+                    "userCode": "    ################################################################################\n\n    result = phantom.collect2(\n        container=container,\n        datapath=[\n            \"run_list_subnets:action_result.status\",\n            \"run_list_subnets:action_result.message\",\n            \"run_list_subnets:action_result.parameter.subnet_name\",\n        ],\n        action_results=results,\n    )\n    # No action result means SOAR refused to dispatch the action (it creates no\n    # app_run); the reason is in this playbook run's log, not in a result.\n    status, message, subnet_name = (result[0][0], result[0][1], result[0][2]) if result else (\n        \"failed\", \"No action result: SOAR did not dispatch the action. See this playbook run's log for the reason.\", \"\",\n    )\n    mark = \"PASS\" if status == \"success\" else \"FAIL\"\n\n    phantom.add_note(\n        container=container,\n        note_type=\"general\",\n        title=\"efficientip_ddi action test - list subnets - {}\".format(mark),\n        content=\"**list subnets:** {}\\n\\n**Subnet name:** {}\\n\\n{}\".format(mark, subnet_name or \"\", message or \"\"),\n        note_format=\"markdown\",\n    )\n    phantom.save_run_data(key=\"list_subnets\", value=json.dumps(mark))\n\n    ################################################################################\n",
+                    "warnings": {}
                 }
             },
             "notes": "",
-            "description": "Diagnostic Data playbook exercising all 3 efficientip_ddi actions (test connectivity, get ip address, list subnets) against known-good mock seed values, in 3 independent parallel branches, each writing its own pass/fail note. Built after the SOAR App Debugger view was found to be unreliable for SDK apps (see memory project-soar85-app-debugger-sdk-action-not-found) -- gives a repeatable way to validate the connector through the real action_run dispatch path."
+            "description": "Diagnostic data playbook for the EfficientIP DDI connector. Runs its 3 actions (test connectivity, get ip address, list subnets) through the real action dispatch path and writes one PASS/FAIL note per action. Optional inputs ip and subnet_name pick values that exist in your IPAM; blank uses the lab mock's seed values."
         },
-        "input_spec": [],
-        "output_spec": [],
+        "input_spec": [
+            {
+                "name": "ip",
+                "contains": [
+                    "ip",
+                    "ipv6"
+                ],
+                "description": "Optional. An IP address that exists in your IPAM. Blank: 10.20.30.40, the lab mock's seed record."
+            },
+            {
+                "name": "subnet_name",
+                "contains": [],
+                "description": "Optional. A subnet NAME (a label, not a CIDR) that exists in your IPAM. Blank: CORP_LAN-USERS, the lab mock's seed subnet."
+            }
+        ],
+        "output_spec": [
+            {
+                "name": "status",
+                "contains": [],
+                "metadata": {},
+                "datapaths": [],
+                "deduplicate": false,
+                "description": "pass when all 3 actions passed, else fail."
+            },
+            {
+                "name": "test_connectivity",
+                "contains": [],
+                "metadata": {},
+                "datapaths": [],
+                "deduplicate": false,
+                "description": "PASS or FAIL."
+            },
+            {
+                "name": "get_ip_address",
+                "contains": [],
+                "metadata": {},
+                "datapaths": [],
+                "deduplicate": false,
+                "description": "PASS or FAIL."
+            },
+            {
+                "name": "list_subnets",
+                "contains": [],
+                "metadata": {},
+                "datapaths": [],
+                "deduplicate": false,
+                "description": "PASS or FAIL."
+            }
+        ],
         "playbook_type": "data",
         "python_version": "3.13",
-        "schema": "5.0.5",
-        "version": "8.5.0.100"
+        "schema": "5.0.24",
+        "version": "8.6.0.530",
+        "playbook_trigger": "artifact_created"
     },
-    "create_time": "2026-09-24T12:42:52.802091Z",
+    "create_time": "2026-10-01T11:49:56.093159Z",
     "draft_mode": false,
     "labels": [
         "events"

@@ -1,8 +1,6 @@
 # UC17 — EfficientIP DDI Enrichment — Paquet de transfert (déploiement air-gapped)
 
-Généré le 2026-09-24 12:48 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
-Connecteur mis à jour en v1.0.12 le 2026-09-30, à la main dans ce dépôt ; les playbooks,
-le modèle d'asset et le reste sont inchangés par rapport à cet export.
+Généré le 2026-10-01 11:57 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
 
 Ce paquet est autonome — tout ce qu'il faut pour déployer ce cas d'usage manuellement
 dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
@@ -13,7 +11,7 @@ dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
 
 | Chemin | Contenu |
 |--------|---------|
-| `connectors/` | Paquet(s) applicatif(s) connecteur : efficientip_ddi-v1.0.12.tgz |
+| `connectors/` | Paquet(s) applicatif(s) connecteur : efficientip_ddi-v1.0.14.tgz |
 | `connectors/source/` | Même(s) connecteur(s), extrait(s) — pour lecture, pas pour import |
 | `playbooks/*.tgz` (PB) | efficientip_ddi_enrich, efficientip_ddi_action_test |
 | `playbooks/source/` | Mêmes CF/playbooks, extraits — pour lecture, pas pour import |
@@ -29,7 +27,7 @@ d'installation.
 
 - **Ce qui s'applique dépend de ce qui est déjà installé — vérifiez d'abord la liste des applications.** Ouvrez Apps et recherchez `EfficientIP`. Si vous voyez **une seule** application (nommée `efficientip_ddi` / `EfficientIP DDI`), vous avez installé le paquet du 2026-08-31 ou un plus récent : celui-ci est une **mise à jour normale, sur place**. Installez-le par-dessus l'application existante — même identifiant interne — et votre actif (asset) existant continue de fonctionner avec tous ses identifiants. **Ne supprimez rien et ne ressaisissez aucun identifiant.** Si en revanche vous voyez **deux** applications (`efficientip_ddi` et `EfficientIP DDI (Classic)`), vous êtes encore sur un paquet antérieur au 2026-08-31, et c'est la note ci-dessous qui vous concerne.
 
-- **Le connecteur v1.0.12 corrige un HTTP 401 systématique sur Test Connectivity.** Le connecteur envoyait les deux en-têtes d'identifiants SOLIDserver sous les noms `X-DDI-Username` / `X-DDI-Password` ; l'APIM lit `X-IPM-Username` / `X-IPM-Password`, et avec les mauvais noms chaque appel échouait en HTTP 401 avec le message « The specified document is not valid JSON data ». Il corrige aussi `get ip address`, qui filtrait sur une colonne (`host_addr`) absente de l'appliance ; il utilise désormais `hostaddr`. C'est une mise à jour normale, sur place : même application, même actif (asset), aucun identifiant à ressaisir, aucun playbook à réimporter. Installez-le par-dessus l'application existante. Un point à vérifier sur l'actif : **`base_url` doit inclure le préfixe de chemin de l'APIM situé avant `/rest`** (par exemple `https://apim.exemple/prefixe/segment`) ; le connecteur y ajoute `/rest/<service>`.
+- **Le connecteur v1.0.14 et les deux playbooks ont changé (2026-10-01).** Il inclut la correction v1.0.12 du HTTP 401 permanent sur Test Connectivity (publiée le 2026-09-30) : les identifiants SOLIDserver partent en `X-IPM-Username` / `X-IPM-Password` (c'était `X-DDI-*`, qui faisait échouer chaque appel avec « The specified document is not valid JSON data »), et `get ip address` filtre sur `hostaddr` (il utilisait `host_addr`, qui n'existe pas sur l'appliance). **Vérifiez le `base_url` de l'asset : il doit inclure le préfixe de chemin de l'APIM placé avant `/rest`** (par exemple `https://apim.example/prefix/segment`) ; le connecteur y ajoute `/rest/<service>`. Installez le connecteur par-dessus l'application existante, en mise à jour sur place (votre asset et ses identifiants restent), puis ré-importez `efficientip_ddi_enrich` et `efficientip_ddi_action_test` pour qu'ils remplacent les versions précédentes. La sortie `status` d'`efficientip_ddi_enrich` valait `partial` aussi bien pour « absente de l'IPAM » que pour « recherche en échec » ; elle vaut maintenant `not_found` ou `failed`. Un de vos playbooks qui testait `partial` doit être modifié. `efficientip_ddi_action_test` prend maintenant les entrées facultatives `ip`/`subnet_name` (voir Vérification). Les deux playbooks sont conçus pour résister à un enregistrement : re-pointer leurs blocs d'action vers le nom de votre asset est sans risque.
 
 - **Ce paquet retire deux actions du connecteur : `get ip pool` et `list aliases`** (connecteur v1.0.11). Le connecteur n'appelle plus que deux services SOLIDserver : `ip_address_list` (`get ip address`) et `ip_block_subnet_list` (`list subnets`, `test connectivity`). Après la mise à jour, tout playbook qui appelle encore une action retirée échoue à cette étape. Cela inclut les playbooks `efficientip_ddi_enrich` et `efficientip_ddi_action_test` de tout paquet précédent : réimportez les deux depuis ce paquet pour qu'ils remplacent les versions précédentes. Si vous avez construit vos propres playbooks sur `get ip pool` ou `list aliases`, retravaillez-les avant la mise à jour. Votre actif (asset) et ses identifiants ne sont pas concernés. Le nouveau `efficientip_ddi_enrich` corrige aussi sa note de synthèse : avec les paquets du 2026-08-31 au 2026-09-09, le nom d'hôte, le sous-réseau, l'espace, l'adresse MAC et la classe revenaient vides. Ils sont désormais renseignés.
 
@@ -59,8 +57,20 @@ d'installation.
      **Une identité doit correspondre au justificatif saisi à côté d'elle** — un vrai mot
      de passe associé à un nom d'utilisateur résiduel de l'environnement source ne
      s'authentifie auprès de rien et renvoie une erreur HTTP 401.
-3. **Importer les playbooks** depuis `playbooks/*.tgz`, via Apps/Playbooks > Import dans
-   l'interface SOAR cible. (`playbooks/source/` est le même code extrait pour lecture —
+
+   **Les playbooks sont livrés pointant vers les noms d'assets ci-dessous.** Créez vos
+   assets avec ces noms, ou gardez vos propres noms et redirigez les blocs d'action de
+   chaque playbook vers vos assets dans le VPE, puis enregistrez : chaque playbook de ce
+   paquet est conçu pour résister à un enregistrement. (Un enregistrement rend un playbook
+   lancé à la main disponible sur tous les libellés de conteneur ; le réimporter rétablit
+   le libellé.)
+
+   | Nom de l'asset | Application | Utilisé par | Modèle |
+   |---|---|---|---|
+   | `efficientip_ddi mock` | EfficientIP DDI | `efficientip_ddi_action_test`, `efficientip_ddi_enrich` | `assets/efficientip_ddi_mock.json` |
+
+3. **Importer les playbooks** depuis `playbooks/*.tgz`, via *Import Playbook* sur la page
+   Playbooks de l'interface SOAR cible. (`playbooks/source/` est le même code extrait pour lecture —
    ne pas importer depuis ce dossier, l'interface a besoin du `.tgz`.)
 4. **Rien à activer.** Tous les playbooks de ce paquet sont des playbooks d'entrée
    (`data`) — il n'y a aucun déclencheur d'automatisation à activer ni d'utilisateur
@@ -70,9 +80,11 @@ d'installation.
 
 ## Vérification
 
-1. **Lancez d'abord `efficientip_ddi_action_test`.** Il ne prend aucune entrée : ouvrez n'importe quel container, puis Playbooks > Run Playbook et choisissez-le. Il écrit trois notes, une par action du connecteur (`test connectivity`, `get ip address`, `list subnets`), chacune marquée PASS ou FAIL avec le message de l'action. Ses valeurs de test (`10.20.30.40`, `CORP_LAN-USERS`) viennent du mock du labo : sur votre IPAM, attendez-vous à ce que `test connectivity` soit PASS et que les deux autres signalent « not found », sauf si ces valeurs existent chez vous. Un « not found » prouve quand même que l'appel a atteint SOLIDserver et est revenu. Un message HTTP 401, TLS ou BAD REQUEST, non.
+1. **Lancez d'abord `efficientip_ddi_action_test`, avec des valeurs de votre IPAM.** Ouvrez n'importe quel container, puis Playbooks > Run Playbook et choisissez-le. Il demande deux entrées facultatives : `ip`, une adresse qui existe dans votre IPAM, et `subnet_name`, le NOM d'un de vos sous-réseaux (un libellé, pas un CIDR). Laissées vides, elles prennent les valeurs du mock du labo (`10.20.30.40`, `CORP_LAN-USERS`), absentes de votre IPAM : ces deux tests sont alors FAIL avec « not found ». Il écrit trois notes, une par action du connecteur (`test connectivity`, `get ip address`, `list subnets`), chacune PASS ou FAIL avec le message de l'action. Attendez trois PASS. Un « not found » prouve quand même que l'appel a atteint SOLIDserver et est revenu. Un message HTTP 401, TLS ou BAD REQUEST, non.
 
-2. **Lancez ensuite `efficientip_ddi_enrich` de la même façon.** Il ne lit aucun artifact. Run Playbook demande sa seule entrée, `ip` : donnez une adresse IPv4 qui existe dans votre IPAM. Il écrit une note `EfficientIP DDI Enrichment` avec le nom d'hôte, le sous-réseau, l'espace, l'adresse MAC, la classe et la description. Pour une adresse absente de votre IPAM, il écrit quand même la note, avec ces champs vides. L'exécution apparaît alors en échec parce que l'action de recherche a échoué. C'est attendu, ce n'est pas une panne.
+2. **Lancez ensuite `efficientip_ddi_enrich` de la même façon.** Il ne lit aucun artifact. Run Playbook demande sa seule entrée, `ip`. Il écrit une note `EfficientIP DDI Enrichment` avec le nom d'hôte, le sous-réseau, l'espace, l'adresse MAC, la classe, la description et une ligne **Result** qui reprend le message de l'action. Sa sortie `status` dit ce qui s'est passé : `success` (trouvée), `not_found` (la recherche a fonctionné et votre IPAM n'a pas d'enregistrement), `failed` (la recherche elle-même a échoué : lisez la ligne Result), `error` (aucune `ip` fournie). Pour `not_found` et `failed`, l'exécution apparaît en échec parce que l'action de recherche a échoué. C'est attendu. À essayer : une adresse de votre IPAM (`success`), une adresse inutilisée (`not_found`) et, si votre site en a, une adresse IPv6 présente dans votre IPAM. On ne sait pas encore si ce service SOLIDserver renvoie les enregistrements IPv6 : indiquez ce que vous obtenez.
+
+3. **Un HTTP 401 indique désormais de quel type il s'agit.** Le message cite l'en-tête `X-Backside-Transport` de la passerelle. `OK OK` : SOLIDserver lui-même a refusé les identifiants, vérifiez `ddi_username`/`ddi_password` (pas de nouvel essai). `FAIL FAIL` : l'APIM n'a pas pu joindre son backend ; ce n'est pas un problème d'identifiants, transmettez l'`APIm-Debug-Trans-Id` du message à l'administrateur de l'APIM. Pas d'en-tête : vérifiez `client_id`/`client_secret` et le certificat client. Notez lequel des trois vous voyez.
 
 Si une exécution échoue d'une façon que les notes n'expliquent pas, consultez `playbook.log`/`actiond.log` sur l'hôte SOAR cible. Pour un HTTP 401 sur une action, voir Diagnostics ci-dessous.
 

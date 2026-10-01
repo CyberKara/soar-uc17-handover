@@ -1,5 +1,5 @@
 """
-Data playbook for EfficientIP DDI (SOLIDserver) IP address enrichment. Looks up an IP in IPAM and writes a summary note.
+Data playbook for EfficientIP DDI (SOLIDserver) IP address enrichment. Looks up an IP in IPAM and writes a summary note. Output status: success, not_found (IPAM has no record), failed (the lookup itself failed) or error (no ip input).
 """
 
 
@@ -84,7 +84,7 @@ def get_ip_address(action=None, success=None, container=None, results=None, hand
 def format_summary(action=None, success=None, container=None, results=None, handle=None, filtered_artifacts=None, filtered_results=None, custom_function=None, loop_state_json=None, **kwargs):
     phantom.debug("format_summary() called")
 
-    template = """# EfficientIP DDI Enrichment\n\n**IP Address:** {0}\n**Lookup Status:** {1}\n**Hostname:** {2}\n**Subnet:** {3}\n**Space:** {4}\n**MAC Address:** {5}\n**Class:** {6}\n**Description:** {7}"""
+    template = """# EfficientIP DDI Enrichment\n\n- **IP Address:** {0}\n- **Lookup Status:** {1}\n- **Hostname:** {2}\n- **Subnet:** {3}\n- **Space:** {4}\n- **MAC Address:** {5}\n- **Class:** {6}\n- **Description:** {7}\n- **Result:** {8}"""
 
     # parameter list for template variable replacement
     parameters = [
@@ -95,7 +95,8 @@ def format_summary(action=None, success=None, container=None, results=None, hand
         "get_ip_address:action_result.data.*.site_name",
         "get_ip_address:action_result.data.*.mac_addr",
         "get_ip_address:action_result.data.*.ip_class_name",
-        "get_ip_address:action_result.data.*.description"
+        "get_ip_address:action_result.data.*.description",
+        "get_ip_address:action_result.message"
     ]
 
     ################################################################################
@@ -163,13 +164,24 @@ def finalize(action=None, success=None, container=None, results=None, handle=Non
     ip_input = phantom.collect2(container=container, datapath=["playbook_input:ip"])
     ip_address = ip_input[0][0] if ip_input and ip_input[0][0] else ""
 
-    output_status = "success" if (status == "success" and ip_id) else "partial"
+    # not_found: the lookup worked and IPAM has no record. failed: the lookup
+    # itself failed (gateway, credentials, network) -- a caller must not read
+    # that as "this IP is unknown". The connector's not-found message is fixed.
+    message_result = phantom.collect2(container=container, datapath=["get_ip_address:action_result.message"])
+    message = message_result[0][0] if message_result and message_result[0][0] else ""
+    if status == "success" and ip_id:
+        output_status = "success"
+    elif message.startswith("No IP address record found"):
+        output_status = "not_found"
+    else:
+        output_status = "failed"
 
     phantom.add_note(
         container=container,
         note_type="general",
         title="EfficientIP DDI Enrichment",
         content=summary_note,
+        note_format="markdown",
     )
 
     # save_playbook_output_data() is only callable from on_finish() on SOAR 8.5
@@ -258,6 +270,7 @@ def note_error(action=None, success=None, container=None, results=None, handle=N
         note_type="general",
         title="EfficientIP DDI Enrichment - Error",
         content=error_note,
+        note_format="markdown",
     )
 
     # save_playbook_output_data() is only callable from on_finish() on SOAR 8.5
@@ -293,15 +306,15 @@ def on_finish(container, summary):
     phantom.debug("on_finish() called")
 
     output = {
-        "status": None,
-        "ip_address": None,
-        "hostname": None,
-        "subnet": None,
-        "space": None,
-        "mac_address": None,
-        "ddi_class": None,
-        "description": None,
-        "ip_id": None,
+        "status": [],
+        "ip_address": [],
+        "hostname": [],
+        "subnet": [],
+        "space": [],
+        "mac_address": [],
+        "ddi_class": [],
+        "description": [],
+        "ip_id": [],
     }
 
     ################################################################################
@@ -318,6 +331,13 @@ def on_finish(container, summary):
     raw_output = phantom.get_run_data(key="playbook_output")
     if raw_output:
         output.update(json.loads(raw_output))
+    # The 8.6 VPE initialises every output above to [] (8.5 wrote None), so an
+    # output no block set is normalised to null here, whichever form a save wrote.
+    for key, value in output.items():
+        if value == []:
+            output[key] = None
+    if output["status"] is None:
+        output["status"] = "error"
 
     ################################################################################
     ################################################################################

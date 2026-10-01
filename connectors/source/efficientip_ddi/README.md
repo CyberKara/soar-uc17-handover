@@ -222,7 +222,9 @@ alone.
 ### Retry on 401
 
 The real appliance has been observed returning `401` for a request that succeeds,
-unchanged, moments later. The connector holds no per-call state — headers are
+unchanged, moments later. The cause is the APIM's backend leg failing: a captured
+transient 401 carries `X-Backside-Transport: FAIL FAIL`, and the gateway synthesised
+the 401 itself (2026-09-02). The connector holds no per-call state — headers are
 recomputed from config on every call, there is no session, cookie or token, certs
 are written and deleted per call — so identical inputs produce identical bytes.
 That is what makes retrying meaningful here rather than re-asking a question the
@@ -230,13 +232,21 @@ server already answered.
 
 - Applies to **every action, including `test connectivity`**.
 - `401` only. `400` and `403` are deterministic and are never retried.
+- **Not** a 401 whose `X-Backside-Transport` is all `OK` (`OK OK`): the gateway
+  reached SOLIDserver, so that 401 is the backend's own credential verdict.
+  Repeating it only risks a lockout (since v1.0.14). A `FAIL` value, or no header
+  at all, is retried. Only one transient 401 has been captured, so the no-header
+  case stays retryable until the appliance shows what it means.
+- The final 401 message says which case it was: `OK` → check
+  `ddi_username`/`ddi_password`; `FAIL` → escalate to the APIM administrator, with
+  the call's `APIm-Debug-Trans-Id` in the message; no header → check
+  `client_id`/`client_secret` and the client certificate.
 - Linear backoff between attempts, not immediate re-fire: rapid repeated auth
-  failures are what trip gateway lockout and quota policies, and if the cause is
-  an auth-cache TTL gap, the wait is the part that helps.
+  failures are what trip gateway lockout and quota policies.
 - **Never silent.** Every attempt is logged with its peer address, and a call
   that only succeeded on a later attempt reports `Succeeded on attempt N of M` in
-  the action result. The intermittency is still an open investigation, so the
-  retry must not bury the evidence for it.
+  the action result, so the gateway fault stays visible to the operator who has
+  to escalate it.
 
 Retry is a mitigation, not a diagnosis. It is designed so that running it
 produces *better* evidence than not running it: if attempt 1 fails at one peer
@@ -252,7 +262,7 @@ material are replaced by a length and a SHA-256 prefix.
 
 | Line | Answers |
 |---|---|
-| `idle: Ns since last successful call` | Separates the three surviving 401 theories: an auth-cache expiry fails after a **gap**, a quota policy fails under a **burst** (the opposite), a bad load-balanced node correlates with neither. |
+| `idle: Ns since last successful call` | Gap vs burst. Kept from the 401 hunt; on the appliance neither correlated (the cause was the APIM backend leg). |
 | `retry plan: up to N attempt(s) ...` | What this asset is configured to do. |
 | `attempt N/M: HTTP s from peer <ip:port>` | **Which node served this call** — the decisive line when a 401 follows one address while 200s follow another. |
 | `dns: <host> -> <addrs>` | Does the APIM name resolve to more than one node? |
@@ -279,7 +289,7 @@ the repo.
 
 ## Testing
 
-**Unit/regression suite** — 41 tests, pinning defects that previously passed
+**Unit/regression suite** — 59 tests, pinning defects that previously passed
 silently:
 
 ```bash
@@ -299,14 +309,11 @@ target):
 cd soar8/migration/mock-backend && ./mock_start.sh ddi
 ```
 
-**v1.0.12 and the mock.** The connector now sends `X-IPM-Username` /
-`X-IPM-Password` and filters `get ip address` on `hostaddr`. The mock and the
-unit suite live outside this package and were **not** changed with it. Until the
-mock reads the `X-IPM-*` names (it read `X-DDI-*`) and its `ip_address_list`
-filters on `hostaddr` (it was seeded with `host_addr`), Test Connectivity against
-the mock answers HTTP 401 and `get ip address` fails. The same two names are
-pinned in the unit suite, so those tests need the same update, and so does the
-source repo this package is exported from, or its next export reverts this fix.
+**The mock follows the appliance (since v1.0.14).** It reads the `X-IPM-*`
+header names and filters `ip_address_list` on `hostaddr`, and it does NOT also
+accept `X-DDI-*` / `host_addr`: a connector that regressed to the old names fails
+against it the way it failed on the appliance. The unit suite pins the same two
+names.
 
 Point the asset at `https://<mock-host>:8447` — **never** `127.0.0.1`/`localhost`,
 the mock runs cross-host on the ansible controller — with
@@ -361,14 +368,39 @@ also accept `name`.
 - **IPv6 filtering** — `hostaddr` is confirmed for IPv4 only. The connector
   normalises IPv6 to its compressed form (`2001:0db8::0001` → `2001:db8::1`);
   whether the appliance stores that form or the expanded one is unverified.
-- A `list subnets` 401 seen on the real appliance (2026-08-29) is **unexplained**.
-  Four causes have now been asserted for it and none survived; do not adopt a
-  fifth without evidence. Since 2026-09-01 it is *mitigated* by the 401 retry
-  above and instrumented by the idle-gap line — but mitigated is not explained,
-  and the retry is deliberately noisy so the evidence keeps accumulating.
-  Percent-encoding of the `WHERE` clause and the `limit` parameter are both
-  ruled out, and the `403 = bad request` mapping rules out every remaining
-  query-shaped explanation.
+- ~~A `list subnets` 401 seen on the real appliance (2026-08-29) is unexplained.~~
+  **Explained 2026-09-02:** the transient 401 is the APIM's backend leg failing
+  (`X-Backside-Transport: FAIL FAIL`), client-independent (bare curl failed 2 of 3).
+  Escalate to the APIM administrator with the `APIm-Debug-Trans-Id`; the retry is
+  the only mitigation on this side.
+- **What every other 401 carries** — only one transient 401 has been captured. Not
+  yet seen on the appliance: whether every transient 401 is `FAIL FAIL`, and what a
+  genuinely wrong credential returns (`OK OK` from the backend, or no header from
+  the gateway). v1.0.14 stops retrying only the `OK` case.
+
+## v1.0.14 (2026-10-01) — v1.0.12's appliance fixes brought home; IPv6; 401 split; review fixes
+
+v1.0.12 (below) was made directly in the handover mirror on 2026-09-30 and never
+reached this source repo, so the lab kept building from v1.0.11. Two builds made
+here on 2026-10-01 were numbered 1.0.12 and 1.0.13 without its fixes: installed on
+soar8 only, never shipped. v1.0.14 carries v1.0.12 plus:
+
+- **IPv6 reaches the connector.** `get ip address`'s `address` declared
+  `contains: ["ip"]`, and SOAR validates a parameter against its contains types
+  before dispatch: an IPv6 address was refused with `Parameter 'address' failed
+  validation` and never reached the connector (soar8 playbook run 3469). Now
+  `["ip", "ipv6"]`, the form 79 parameters in `reference_connectors/` use, and so
+  are the two `address` output datapaths. Whether SOLIDserver answers an IPv6
+  lookup on `ip_address_list` is unverified, and an IPv6 not-found says so.
+- A 401 under `X-Backside-Transport: OK OK` is no longer retried, and every final
+  401 says which case it was (see "Retry on 401").
+- The debug-only work (DNS lookup of the APIM name, PEM fingerprints, environment
+  probe, curl replay, peer address) runs only with `debug_logging` on. The DNS
+  lookup used to run on every call, because the message was formatted before
+  `_dbg()` checked the flag.
+- Docstrings and comments that still called the 401 an open investigation are
+  corrected.
+- The unit suite and the lab mock now use `X-IPM-*` and `hostaddr` (see Testing).
 
 ## v1.0.12 (2026-09-30) — backend-auth header names, `hostaddr`
 

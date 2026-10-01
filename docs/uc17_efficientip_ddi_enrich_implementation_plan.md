@@ -17,36 +17,102 @@
 > user). **Built + deployed + live-verified 2026-08-25 (later still)** — see
 > "Build + live-verify (2026-08-25)" below.
 
-## [!] CORRECTION 2026-09-30 — the constant 401 was the header names; `host_addr` was wrong (connector v1.0.12)
+## Review fixes, IPv6, 8.6 save-safe playbooks — connector v1.0.14 (2026-10-01)
 
-**Read this before the dated sections below that say otherwise.** Two claims in
-this log are contradicted by a test on the target appliance itself, run from the
-operator's own working curl:
+Closes the open findings of the 2026-09-24 review and brings both playbooks to
+the 8.6 save-safe shape (`constraints.md`), so an importer can re-point the
+asset and save.
 
-1. **`X-DDI-Username` / `X-DDI-Password` are not the names the APIM reads.** The
-   working curl sends `x-ipm-username` / `x-ipm-password`. Renaming only those
-   two headers in it to `X-DDI-*` returns HTTP 401 `"The specified document is
-   not valid JSON data"` — the same message recorded on 2026-08-29, now on every
-   call including `test connectivity`. The `X-DDI-*` names were sent by every
-   connector version through v1.0.11; v1.0.12 sends `X-IPM-*`. This contradicts
-   the notes below saying the `X-DDI-*` layer was accepted on the real appliance
-   (2026-08-29) and the client bisect's curl rows (2026-09-02), which also sent
-   `X-DDI-*`. The record does not explain the disagreement, and this note does
-   not guess: what is established is the one-variable test above.
-2. **`host_addr` is not a column on the appliance**, `hostaddr` is. The same curl
-   filters on `hostaddr='<ip>'`; `host_addr` answers with a SOLIDserver SQL error
-   (`sql_error` 7). The "live-verified" of `host_addr` in the 2026-09-01 section
-   is the soar8 run against the mock, which was seeded with `host_addr` for that
-   change.
+**[!] The mirror was ahead of this repo.** On 2026-09-30 a claude.ai/code session
+committed connector **v1.0.12** straight to `cyberkara/soar-uc17-handover`
+(`aa6dea7`), from the operator's working curl on the appliance: the APIM reads the
+backend credentials as **`X-IPM-Username`/`X-IPM-Password`** (`X-DDI-*`
+reproduced the constant HTTP 401 "The specified document is not valid JSON data"),
+and `get ip address` must filter on **`hostaddr`** (`host_addr` answers
+`sql_error` 7). Also: `base_url` must carry the APIM path prefix before `/rest`.
+None of it came back here, so the first two builds of this pass (lab-only, numbered
+1.0.12 and 1.0.13) were cut from v1.0.11, and the export would have reverted the
+appliance fix. It was caught by reading the mirror's log before pushing, then
+ported by a 3-way apply (identical base). **Before any export, read the mirror's
+`git log` for commits that are not in this repo.** The lab mock and unit suite now
+use the new names and reject the old ones (mock restarted 2026-10-01 11:56Z, user
+OK). Note the 401 history: the transient `FAIL FAIL` 401 (2026-09-02) and this
+deterministic header-name 401 are two different faults.
 
-Also recorded: the APIM publishes the REST services under a path prefix, which
-belongs in the asset's `base_url` (the operator's asset already has it), and the
-working curl sends `Accept: application/json` and `Cache-Control: no-cache` too,
-so neither header is a difference. The client-bisect and probe scripts in the
-handover now send `X-IPM-*` as well; before that their curl rows could not have
-reproduced a working request.
+**Connector `efficientip_ddi` v1.0.14** (`soar-connectors` `3a69da0` + the v1.0.12
+port; installed on soar8 as app 196) = v1.0.12 plus:
 
-Only the connector changed. No playbook was edited or rebuilt.
+- **IPv6 never reached the connector.** `address` declared `contains: ["ip"]`,
+  and SOAR validates a parameter against its contains types before dispatch:
+  `2001:db8::99` was refused with `Parameter 'address' failed validation`
+  (playbook run 3469, no connector code ran). Now `["ip", "ipv6"]`, the form 79
+  parameters in `reference_connectors/` use. The review's "IPv6 passes
+  validation" was true of `_validate_ip()` only. Whether `ip_address_list` holds
+  IPv6 at all is still unverified, so an IPv6 not-found says so in its message.
+- **401 split by the gateway's own header.** A 401 under
+  `X-Backside-Transport: OK OK` (the gateway reached SOLIDserver) is the
+  backend's credential verdict and is no longer retried. `FAIL`, or no header,
+  is still retried: only one transient 401 has ever been captured. Every final
+  401 names its case and carries `APIm-Debug-Trans-Id`.
+- The debug-only work (DNS lookup, fingerprints, env probe, curl replay) runs
+  only with `debug_logging` on; the DNS lookup used to run on every call.
+- Stale "401 still open" docstrings corrected.
+
+**`efficientip_ddi_enrich`** — output `status` is now `success` | `not_found`
+(IPAM has no record) | `failed` (the lookup itself failed) | `error` (no `ip`).
+It was `partial` for both of the middle two, so a caller could read a gateway
+failure as "unknown IP". The note gains a **Result** line (the action's own
+message), is posted as markdown (it was html, so `**` showed literally) and is a
+list (single newlines collapsed into one paragraph). `on_finish` handles the 8.6
+`[]` initial outputs. 8.6 VPE stamps.
+
+**`efficientip_ddi_action_test`** — rebuilt in the shape the 8.6 VPE generates.
+The module-level `ASSET` constant is gone (a save drops module code, and the
+export's asset-name table could not see it). It has optional inputs `ip` and
+`subnet_name`; blank uses the mock seed values, and **on the appliance the
+operator should pass an IP and a subnet name that exist there**, or the two
+lookups FAIL on seed values the real IPAM doesn't hold. Outputs `status`
+(pass/fail) + one PASS/FAIL per action. An action SOAR refuses to dispatch now
+reports FAIL with a pointer to the playbook run, not "not run". Notes are
+markdown.
+
+**Verified on soar8 2026-10-01** (connector 1.0.14 against the restarted mock,
+enrich id 276, action_test id 277; ids historical): `uc17_verify.sh` all green, and
+every row below re-run on 1.0.14.
+
+| Run | Input | Output `status` |
+|---|---|---|
+| enrich | `10.20.30.40` | `success`, all fields |
+| enrich | `10.20.30.99` (sparse seed) | `success` |
+| enrich | `10.20.30.200` | `not_found` |
+| enrich | `2001:db8::99` | `not_found` + IPv6 caveat in the note (was refused before dispatch) |
+| enrich | `not-an-ip` | `failed` |
+| enrich | (none) | `error` |
+| action_test | (none) | `pass`, 3 × PASS |
+| action_test | `10.20.30.99` / `NO_SUCH_SUBNET` | `fail`: list subnets FAIL, others PASS |
+
+`add_debug_data()` re-checked on 8.6: still dropped (app_run 4231 stores
+`data/message/parameter/status/summary` only, `extra_data` empty), so
+`save_progress()` stays the only channel to the operator.
+
+**Needs the appliance** (nothing more to do in the lab):
+
+1. Install 1.0.14 (in-place over 1.0.11 or the mirror's 1.0.12); check the
+   asset's `base_url` carries the APIM path prefix; run
+   `efficientip_ddi_action_test` with a real `ip` and `subnet_name`: expect
+   `pass`. This is also the first appliance run of the `X-IPM-*`/`hostaddr`
+   build that came through the export.
+2. Run `efficientip_ddi_enrich` on a real IPv4 (`success`), an unused IPv4
+   (`not_found`), and a real IPv6, if the site has any (answers whether
+   `ip_address_list` serves IPv6, and in which spelling).
+3. On any 401, read the message: it now names `OK OK` / `FAIL FAIL` / no header.
+   A wrong-password run (`ddi_username`/`ddi_password`) would show what a genuine
+   credential 401 carries, the last unknown in the retry split.
+4. Re-point the asset in both playbooks if it isn't named `efficientip_ddi mock`,
+   then save: the first appliance save of the 8.6 shape.
+5. Still open from before: the `list subnets` range-filter probes, and the 401
+   escalation to the APIM administrator with a `FAIL FAIL` call's
+   `APIm-Debug-Trans-Id`.
 
 ## Scope cut to two endpoints — connector v1.0.11 (2026-09-24)
 
@@ -85,7 +151,9 @@ Consequences:
   `10.20.30.40` (ip_id 1001, `host01.corp.local`) instead of the 2-alias seed.
 - **Not changed:** the mocks still serve the removed endpoints (harmless), and
   `uc17_airgapped_probe.sh` sections 5–6 still probe them (now moot). The
-  handover mirror `soar-uc17-handover` still carries v1.0.10 until re-exported.
+  handover mirror `soar-uc17-handover` was re-exported the same day (`7f05104`,
+  package `efficientip_ddi_enrich-2026-09-24-r2`), with an upgrade note naming
+  the removed actions and a UC17-specific Verification section.
 
 **Live-verified 2026-09-24 against soar8 + mock.** App 196 upgraded
 1.0.10 -> 1.0.11 in place (REST lists exactly `test connectivity`,

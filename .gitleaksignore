@@ -83,10 +83,11 @@ connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:1097
 # "comparisonKey" line with nothing else on it.
 playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:138
 playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:155
-playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:188
+# 2026-10-01 - user VPE save shifted check_input's third key 188 -> 189.
+playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:189
 # 2026-10-01 - efficientip_ddi_action_test was rebuilt in the 8.6 VPE shape, so
 # its three action blocks now carry the same unused loop-condition
 # comparisonKey placeholder (key suffix 0; verified: nothing else on these lines).
-playbooks/source/efficientip_ddi_action_test/efficientip_ddi_action_test.json:generic-api-key:127
-playbooks/source/efficientip_ddi_action_test/efficientip_ddi_action_test.json:generic-api-key:209
-playbooks/source/efficientip_ddi_action_test/efficientip_ddi_action_test.json:generic-api-key:300
+# 2026-10-01 (later) - test connectivity branch removed (user): 3 -> 2 pins.
+playbooks/source/efficientip_ddi_action_test/efficientip_ddi_action_test.json:generic-api-key:106
+playbooks/source/efficientip_ddi_action_test/efficientip_ddi_action_test.json:generic-api-key:197

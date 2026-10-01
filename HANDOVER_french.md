@@ -1,6 +1,6 @@
 # UC17 — EfficientIP DDI Enrichment — Paquet de transfert (déploiement air-gapped)
 
-Généré le 2026-10-01 11:57 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
+Généré le 2026-10-01 13:34 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
 
 Ce paquet est autonome — tout ce qu'il faut pour déployer ce cas d'usage manuellement
 dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
@@ -80,7 +80,7 @@ d'installation.
 
 ## Vérification
 
-1. **Lancez d'abord `efficientip_ddi_action_test`, avec des valeurs de votre IPAM.** Ouvrez n'importe quel container, puis Playbooks > Run Playbook et choisissez-le. Il demande deux entrées facultatives : `ip`, une adresse qui existe dans votre IPAM, et `subnet_name`, le NOM d'un de vos sous-réseaux (un libellé, pas un CIDR). Laissées vides, elles prennent les valeurs du mock du labo (`10.20.30.40`, `CORP_LAN-USERS`), absentes de votre IPAM : ces deux tests sont alors FAIL avec « not found ». Il écrit trois notes, une par action du connecteur (`test connectivity`, `get ip address`, `list subnets`), chacune PASS ou FAIL avec le message de l'action. Attendez trois PASS. Un « not found » prouve quand même que l'appel a atteint SOLIDserver et est revenu. Un message HTTP 401, TLS ou BAD REQUEST, non.
+1. **Lancez d'abord `efficientip_ddi_action_test`, avec des valeurs de votre IPAM.** Ouvrez n'importe quel container, puis Playbooks > Run Playbook et choisissez-le. Il demande deux entrées facultatives : `ip`, une adresse qui existe dans votre IPAM, et `subnet_name`, le NOM d'un de vos sous-réseaux (un libellé, pas un CIDR). Laissées vides, elles prennent les valeurs du mock du labo (`10.20.30.40`, `CORP_LAN-USERS`), absentes de votre IPAM : ces deux tests sont alors FAIL avec « not found ». Il écrit deux notes, une par action du connecteur (`get ip address`, `list subnets`), chacune PASS ou FAIL avec le message de l'action. Attendez deux PASS. Il ne lance pas `test connectivity` : utilisez pour cela le bouton Test Connectivity de l'asset. Un « not found » prouve quand même que l'appel a atteint SOLIDserver et est revenu. Un message HTTP 401, TLS ou BAD REQUEST, non.
 
 2. **Lancez ensuite `efficientip_ddi_enrich` de la même façon.** Il ne lit aucun artifact. Run Playbook demande sa seule entrée, `ip`. Il écrit une note `EfficientIP DDI Enrichment` avec le nom d'hôte, le sous-réseau, l'espace, l'adresse MAC, la classe, la description et une ligne **Result** qui reprend le message de l'action. Sa sortie `status` dit ce qui s'est passé : `success` (trouvée), `not_found` (la recherche a fonctionné et votre IPAM n'a pas d'enregistrement), `failed` (la recherche elle-même a échoué : lisez la ligne Result), `error` (aucune `ip` fournie). Pour `not_found` et `failed`, l'exécution apparaît en échec parce que l'action de recherche a échoué. C'est attendu. À essayer : une adresse de votre IPAM (`success`), une adresse inutilisée (`not_found`) et, si votre site en a, une adresse IPv6 présente dans votre IPAM. On ne sait pas encore si ce service SOLIDserver renvoie les enregistrements IPv6 : indiquez ce que vous obtenez.
 

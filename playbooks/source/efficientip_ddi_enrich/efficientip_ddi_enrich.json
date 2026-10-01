@@ -4,7 +4,7 @@
     "category": "Investigation",
     "coa": {
         "data": {
-            "hash": "ce8b4a80a25690ee74f816a75d861c95577449f3",
+            "hash": "d3ca7df75558884e33ff1041734aa5722da76916",
             "edges": [
                 {
                     "id": "port_0_to_port_2",
@@ -77,8 +77,8 @@
             ],
             "nodes": {
                 "0": {
-                    "x": 190,
-                    "y": -6.394884621840902e-14,
+                    "x": 1090,
+                    "y": 200,
                     "id": "0",
                     "data": {
                         "id": "0",
@@ -93,8 +93,8 @@
                     "warnings": {}
                 },
                 "1": {
-                    "x": 190,
-                    "y": 1400,
+                    "x": 1090,
+                    "y": 1030,
                     "id": "1",
                     "data": {
                         "id": "1",
@@ -111,8 +111,8 @@
                     "warnings": {}
                 },
                 "2": {
-                    "x": 190,
-                    "y": 100,
+                    "x": 1150,
+                    "y": 348,
                     "id": "2",
                     "data": {
                         "id": "2",
@@ -168,11 +168,12 @@
                     "warnings": {}
                 },
                 "3": {
-                    "x": 190,
-                    "y": 250,
+                    "x": 1240,
+                    "y": 528,
                     "id": "3",
                     "data": {
                         "id": "3",
+                        "tab": "byConnector",
                         "loop": {
                             "enabled": false,
                             "pauseUnit": "m",
@@ -232,8 +233,8 @@
                     "warnings": {}
                 },
                 "6": {
-                    "x": 190,
-                    "y": 700,
+                    "x": 1240,
+                    "y": 705,
                     "id": "6",
                     "data": {
                         "id": "6",
@@ -264,8 +265,8 @@
                     "warnings": {}
                 },
                 "7": {
-                    "x": -100,
-                    "y": 960,
+                    "x": 1240,
+                    "y": 853,
                     "id": "7",
                     "data": {
                         "id": "7",
@@ -295,15 +296,11 @@
                     "type": "code",
                     "errors": {},
                     "userCode": "    ################################################################################\n    ################################################################################\n\n    summary_note = phantom.get_format_data(name=\"format_summary\")\n\n    result = phantom.collect2(\n        container=container,\n        datapath=[\n            \"get_ip_address:action_result.status\",\n            \"get_ip_address:action_result.data.*.ip_id\",\n            \"get_ip_address:action_result.data.*.name\",\n            \"get_ip_address:action_result.data.*.subnet_name\",\n            \"get_ip_address:action_result.data.*.site_name\",\n            \"get_ip_address:action_result.data.*.mac_addr\",\n            \"get_ip_address:action_result.data.*.ip_class_name\",\n            \"get_ip_address:action_result.data.*.description\",\n        ]\n    )\n    row = result[0] if result else [None] * 8\n    status, ip_id, hostname, subnet, space, mac_address, ddi_class, description = (\n        row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]\n    )\n\n    ip_input = phantom.collect2(container=container, datapath=[\"playbook_input:ip\"])\n    ip_address = ip_input[0][0] if ip_input and ip_input[0][0] else \"\"\n\n    # not_found: the lookup worked and IPAM has no record. failed: the lookup\n    # itself failed (gateway, credentials, network) -- a caller must not read\n    # that as \"this IP is unknown\". The connector's not-found message is fixed.\n    message_result = phantom.collect2(container=container, datapath=[\"get_ip_address:action_result.message\"])\n    message = message_result[0][0] if message_result and message_result[0][0] else \"\"\n    if status == \"success\" and ip_id:\n        output_status = \"success\"\n    elif message.startswith(\"No IP address record found\"):\n        output_status = \"not_found\"\n    else:\n        output_status = \"failed\"\n\n    phantom.add_note(\n        container=container,\n        note_type=\"general\",\n        title=\"EfficientIP DDI Enrichment\",\n        content=summary_note,\n        note_format=\"markdown\",\n    )\n\n    # save_playbook_output_data() is only callable from on_finish() on SOAR 8.5\n    # (RuntimeError otherwise) -- stash the output via save_run_data and let\n    # on_finish() do the actual save. See playbook-patterns.md's documented\n    # \"save_run_data + on_finish output\" pattern.\n    phantom.save_run_data(key=\"playbook_output\", value=json.dumps({\n        \"status\": output_status,\n        \"ip_address\": ip_address,\n        \"hostname\": hostname or \"\",\n        \"subnet\": subnet or \"\",\n        \"space\": space or \"\",\n        \"mac_address\": mac_address or \"\",\n        \"ddi_class\": ddi_class or \"\",\n        \"description\": description or \"\",\n        \"ip_id\": ip_id or \"\",\n    }))\n\n    phantom.debug(\"EfficientIP DDI enrichment complete: status={}\".format(output_status))\n\n    ################################################################################\n    ################################################################################\n",
-                    "warnings": {
-                        "config": [
-                            "Reconfigure invalid datapath."
-                        ]
-                    }
+                    "warnings": {}
                 },
                 "8": {
-                    "x": 560,
-                    "y": 200,
+                    "x": 900,
+                    "y": 705,
                     "id": "8",
                     "data": {
                         "id": "8",
@@ -324,8 +321,8 @@
                     "warnings": {}
                 },
                 "9": {
-                    "x": 560,
-                    "y": 320,
+                    "x": 900,
+                    "y": 853,
                     "id": "9",
                     "data": {
                         "id": "9",
@@ -449,7 +446,7 @@
         "version": "8.6.0.530",
         "playbook_trigger": "artifact_created"
     },
-    "create_time": "2026-10-01T11:49:53.218090Z",
+    "create_time": "2026-10-01T13:33:03.433333Z",
     "draft_mode": false,
     "labels": [
         "events"

@@ -1,5 +1,5 @@
 """
-Diagnostic data playbook for the EfficientIP DDI connector. Runs its 3 actions (test connectivity, get ip address, list subnets) through the real action dispatch path and writes one PASS/FAIL note per action. Optional inputs ip and subnet_name pick values that exist in your IPAM; blank uses the lab mock's seed values.
+Diagnostic data playbook for the EfficientIP DDI connector. Runs get ip address and list subnets through the real action dispatch path and writes one PASS/FAIL note per action. Optional inputs ip and subnet_name pick values that exist in your IPAM; blank uses the lab mock&#39;s seed values. Test connectivity is not run here: use the asset's own Test Connectivity button.
 """
 
 
@@ -12,87 +12,12 @@ from datetime import datetime, timedelta
 def on_start(container):
     phantom.debug('on_start() called')
 
-    # call 'run_test_connectivity' block
-    run_test_connectivity(container=container)
     # call 'run_get_ip_address' block
     run_get_ip_address(container=container)
     # call 'run_list_subnets' block
     run_list_subnets(container=container)
 
     return
-
-@phantom.playbook_block()
-def run_test_connectivity(action=None, success=None, container=None, results=None, handle=None, filtered_artifacts=None, filtered_results=None, custom_function=None, loop_state_json=None, **kwargs):
-    phantom.debug("run_test_connectivity() called")
-
-    # phantom.debug('Action: {0} {1}'.format(action['name'], ('SUCCEEDED' if success else 'FAILED')))
-
-    ################################################################################
-    # Run 'test connectivity' on the selected EfficientIP DDI asset.
-    ################################################################################
-
-    parameters = []
-
-    parameters.append({
-    })
-
-    ################################################################################
-    ## Custom Code Start
-    ################################################################################
-
-    # Write your custom code here...
-
-    ################################################################################
-    ## Custom Code End
-    ################################################################################
-
-    phantom.act("test connectivity", parameters=parameters, name="run_test_connectivity", assets=["efficientip_ddi mock"], callback=note_test_connectivity)
-
-    return
-
-
-@phantom.playbook_block()
-def note_test_connectivity(action=None, success=None, container=None, results=None, handle=None, filtered_artifacts=None, filtered_results=None, custom_function=None, loop_state_json=None, **kwargs):
-    phantom.debug("note_test_connectivity() called")
-
-    ################################################################################
-    # Write the PASS/FAIL note for test connectivity.
-    ################################################################################
-
-    ################################################################################
-    ## Custom Code Start
-    ################################################################################
-
-    result = phantom.collect2(
-        container=container,
-        datapath=[
-            "run_test_connectivity:action_result.status",
-            "run_test_connectivity:action_result.message",
-        ],
-        action_results=results,
-    )
-    # No action result means SOAR refused to dispatch the action (it creates no
-    # app_run); the reason is in this playbook run's log, not in a result.
-    status, message = (result[0][0], result[0][1]) if result else (
-        "failed", "No action result: SOAR did not dispatch the action. See this playbook run's log for the reason.",
-    )
-    mark = "PASS" if status == "success" else "FAIL"
-
-    phantom.add_note(
-        container=container,
-        note_type="general",
-        title="efficientip_ddi action test - test connectivity - {}".format(mark),
-        content="**test connectivity:** {}\n\n{}".format(mark, message or ""),
-        note_format="markdown",
-    )
-    phantom.save_run_data(key="test_connectivity", value=json.dumps(mark))
-
-    ################################################################################
-    ## Custom Code End
-    ################################################################################
-
-    return
-
 
 @phantom.playbook_block()
 def run_get_ip_address(action=None, success=None, container=None, results=None, handle=None, filtered_artifacts=None, filtered_results=None, custom_function=None, loop_state_json=None, **kwargs):
@@ -118,11 +43,13 @@ def run_get_ip_address(action=None, success=None, container=None, results=None, 
     ################################################################################
     ## Custom Code Start
     ################################################################################
+    ################################################################################
 
     # Blank input: the lab mock's seed record 10.20.30.40, which carries every
     # field (hostname, MAC, description), so the found path is exercised.
     parameters = [item for item in parameters if item.get("address")] or [{"address": "10.20.30.40"}]
 
+    ################################################################################
     ################################################################################
     ## Custom Code End
     ################################################################################
@@ -140,8 +67,14 @@ def note_get_ip_address(action=None, success=None, container=None, results=None,
     # Write the PASS/FAIL note for get ip address.
     ################################################################################
 
+    run_get_ip_address_result_data = phantom.collect2(container=container, datapath=["run_get_ip_address:action_result.status","run_get_ip_address:action_result.message"], action_results=results)
+
+    run_get_ip_address_result_item_0 = [item[0] for item in run_get_ip_address_result_data]
+    run_get_ip_address_result_message = [item[1] for item in run_get_ip_address_result_data]
+
     ################################################################################
     ## Custom Code Start
+    ################################################################################
     ################################################################################
 
     result = phantom.collect2(
@@ -170,8 +103,14 @@ def note_get_ip_address(action=None, success=None, container=None, results=None,
     phantom.save_run_data(key="get_ip_address", value=json.dumps(mark))
 
     ################################################################################
+    ################################################################################
     ## Custom Code End
     ################################################################################
+
+    phantom.save_block_result(key="note_get_ip_address__inputs:0:run_get_ip_address:action_result.status", value=json.dumps(run_get_ip_address_result_item_0))
+    phantom.save_block_result(key="note_get_ip_address__inputs:1:run_get_ip_address:action_result.message", value=json.dumps(run_get_ip_address_result_message))
+
+    phantom.save_block_result(key="note_get_ip_address_called", value="True")
 
     return
 
@@ -199,11 +138,13 @@ def run_list_subnets(action=None, success=None, container=None, results=None, ha
     ################################################################################
     ## Custom Code Start
     ################################################################################
+    ################################################################################
 
     # Blank input: the lab mock's seed subnet. Subnet names are LABELS, not
     # CIDRs -- a subnet's address lives in its range fields, never in its name.
     parameters = [item for item in parameters if item.get("subnet_name")] or [{"subnet_name": "CORP_LAN-USERS"}]
 
+    ################################################################################
     ################################################################################
     ## Custom Code End
     ################################################################################
@@ -221,8 +162,14 @@ def note_list_subnets(action=None, success=None, container=None, results=None, h
     # Write the PASS/FAIL note for list subnets.
     ################################################################################
 
+    run_list_subnets_result_data = phantom.collect2(container=container, datapath=["run_list_subnets:action_result.status","run_list_subnets:action_result.message"], action_results=results)
+
+    run_list_subnets_result_item_0 = [item[0] for item in run_list_subnets_result_data]
+    run_list_subnets_result_message = [item[1] for item in run_list_subnets_result_data]
+
     ################################################################################
     ## Custom Code Start
+    ################################################################################
     ################################################################################
 
     result = phantom.collect2(
@@ -251,8 +198,14 @@ def note_list_subnets(action=None, success=None, container=None, results=None, h
     phantom.save_run_data(key="list_subnets", value=json.dumps(mark))
 
     ################################################################################
+    ################################################################################
     ## Custom Code End
     ################################################################################
+
+    phantom.save_block_result(key="note_list_subnets__inputs:0:run_list_subnets:action_result.status", value=json.dumps(run_list_subnets_result_item_0))
+    phantom.save_block_result(key="note_list_subnets__inputs:1:run_list_subnets:action_result.message", value=json.dumps(run_list_subnets_result_message))
+
+    phantom.save_block_result(key="note_list_subnets_called", value="True")
 
     return
 
@@ -263,7 +216,6 @@ def on_finish(container, summary):
 
     output = {
         "status": [],
-        "test_connectivity": [],
         "get_ip_address": [],
         "list_subnets": [],
     }
@@ -271,16 +223,18 @@ def on_finish(container, summary):
     ################################################################################
     ## Custom Code Start
     ################################################################################
+    ################################################################################
 
     # Populate the generated `output` dict; the save after Custom Code End emits it.
     # A branch that recorded nothing stopped before its note: report it FAIL.
-    for key in ("test_connectivity", "get_ip_address", "list_subnets"):
+    for key in ("get_ip_address", "list_subnets"):
         raw = phantom.get_run_data(key=key)
         output[key] = json.loads(raw) if raw else "FAIL"
     output["status"] = "pass" if all(
-        output[key] == "PASS" for key in ("test_connectivity", "get_ip_address", "list_subnets")
+        output[key] == "PASS" for key in ("get_ip_address", "list_subnets")
     ) else "fail"
 
+    ################################################################################
     ################################################################################
     ## Custom Code End
     ################################################################################

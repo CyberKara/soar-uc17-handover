@@ -17,6 +17,34 @@
 > user). **Built + deployed + live-verified 2026-08-25 (later still)** — see
 > "Build + live-verify (2026-08-25)" below.
 
+## Demo playbook `efficientip_ddi_enrich_demo` — lab copy of the user's appliance test (2026-10-01)
+
+The user built a test playbook on the airgapped appliance; the repo now carries the
+same design as a third UC17 playbook (data, label `*`, no inputs/outputs):
+start → `prompt_ip_lookup` (native prompt, approver = launching user, one required
+free-text answer, 30 min) → `get_ip_address` (bound to
+`prompt_ip_lookup:action_result.summary.responses.0`, asset `efficientip_ddi mock`)
+→ `check_lookup_status` (decision on `get_ip_address:action_result.status ==
+success`) → `format_note_success` + `add_note_iplookup_success`, else
+`format_note_failure` + `add_note_iplookup_failure` → end. All native blocks; the
+notes are the 8.6 *add note* API utility (markdown). The failure note prints the
+connector's message, because a missing IPAM record is also a failure
+(`No IP address record found ...`) — the message is what tells it from a broken
+lookup.
+
+- **Lab-only:** the handover registry entry lists its two playbooks explicitly, so
+  an export never ships the demo and an import never replaces the user's own copy.
+- **Verified 2026-10-01** on container 144: `10.20.30.40` → record note with every
+  field; `10.20.30.77` → failure note with the not-found message. The user then
+  saved it in the VPE (v2): only generated parts changed (escaped docstring, the
+  `get_container()` line after each add note dropped, `on_finish` default comment,
+  action `tab`, empty `input_spec`/`output_spec` as `[]`); v2 is the repo base.
+- **Open:** an expired prompt (no answer) is untested — no address reaches
+  `get_ip_address`, and whether the decision then runs (failure note) or the run
+  just ends is unknown. Start/End show "Unconfigured" (no inputs/outputs) by
+  design, matching the appliance copy; an optional `ip` input + `status` output
+  would clear it (user decision).
+
 ## Review fixes, IPv6, 8.6 save-safe playbooks — connector v1.0.14 (2026-10-01)
 
 Closes the open findings of the 2026-09-24 review and brings both playbooks to
@@ -88,8 +116,17 @@ every row below re-run on 1.0.14.
 | enrich | `2001:db8::99` | `not_found` + IPv6 caveat in the note (was refused before dispatch) |
 | enrich | `not-an-ip` | `failed` |
 | enrich | (none) | `error` |
-| action_test | (none) | `pass`, 3 × PASS |
+| action_test | (none) | `pass`, 3 × PASS (later: 2 × PASS, see below) |
 | action_test | `10.20.30.99` / `NO_SUCH_SUBNET` | `fail`: list subnets FAIL, others PASS |
+
+**Later 2026-10-01 — user review + VPE save on soar8** (278→284, 279→285): both
+saves kept every Custom Code block (284 added marker lines only), so the 8.6
+save-safe shape holds. **User decision: test connectivity does not belong in a
+playbook** — `efficientip_ddi_action_test` now runs only `get ip address` and
+`list subnets` (output `status` + two PASS/FAIL); test the asset with its own
+Test Connectivity button. Rebased on the saved 285 (`b20b826`), deployed as 288:
+blank inputs → `pass` (2 × PASS), `NO_SUCH_SUBNET` → `fail` on list subnets only.
+
 
 `add_debug_data()` re-checked on 8.6: still dropped (app_run 4231 stores
 `data/message/parameter/status/summary` only, `extra_data` empty), so

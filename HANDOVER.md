@@ -1,6 +1,6 @@
 # UC17 — EfficientIP DDI Enrichment — Air-Gapped Handover Package
 
-Generated 2026-10-01 11:57 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
+Generated 2026-10-01 13:34 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
 
 This package is self-contained — everything needed to deploy this use case by hand
 in an environment with no network access back to this repo or to `soar8`.
@@ -74,7 +74,7 @@ previous package. On a completely fresh target, skip to Install order.
 
 ## Verification
 
-1. **Run `efficientip_ddi_action_test` first, with values from your IPAM.** Open any container, then Playbooks > Run Playbook and pick it. It asks for two optional inputs: `ip`, an address that exists in your IPAM, and `subnet_name`, the NAME of one of your subnets (a label, not a CIDR). Left blank they fall back to the lab mock's values (`10.20.30.40`, `CORP_LAN-USERS`), which your IPAM does not hold, so those two checks then FAIL with "not found". It writes three notes, one per connector action (`test connectivity`, `get ip address`, `list subnets`), each PASS or FAIL with the action's own message. Expect three PASS. A "not found" still proves the call reached SOLIDserver and back. An HTTP 401, TLS or BAD REQUEST message does not.
+1. **Run `efficientip_ddi_action_test` first, with values from your IPAM.** Open any container, then Playbooks > Run Playbook and pick it. It asks for two optional inputs: `ip`, an address that exists in your IPAM, and `subnet_name`, the NAME of one of your subnets (a label, not a CIDR). Left blank they fall back to the lab mock's values (`10.20.30.40`, `CORP_LAN-USERS`), which your IPAM does not hold, so those two checks then FAIL with "not found". It writes two notes, one per connector action (`get ip address`, `list subnets`), each PASS or FAIL with the action's own message. Expect two PASS. It does not run `test connectivity`: use the asset's own Test Connectivity button for that. A "not found" still proves the call reached SOLIDserver and back. An HTTP 401, TLS or BAD REQUEST message does not.
 
 2. **Then run `efficientip_ddi_enrich` the same way.** It reads no artifact. Run Playbook asks for its one input, `ip`. It writes an `EfficientIP DDI Enrichment` note listing hostname, subnet, space, MAC address, class, description and a **Result** line carrying the action's own message. Its output `status` says what happened: `success` (found), `not_found` (the lookup worked and your IPAM has no record), `failed` (the lookup itself failed: read the Result line), `error` (no `ip` given). For `not_found` and `failed` the run shows as failed because the lookup action failed. That is expected. Please try: an address in your IPAM (`success`), an unused one (`not_found`), and, if your site has any, an IPv6 address that exists in your IPAM. Whether this SOLIDserver service returns IPv6 records is not yet known, so report what you get.
 

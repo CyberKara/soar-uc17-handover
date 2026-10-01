@@ -7,13 +7,6 @@
             "hash": "",
             "edges": [
                 {
-                    "id": "port_0_to_port_2",
-                    "sourceNode": "0",
-                    "sourcePort": "0_out",
-                    "targetNode": "2",
-                    "targetPort": "2_in"
-                },
-                {
                     "id": "port_0_to_port_4",
                     "sourceNode": "0",
                     "sourcePort": "0_out",
@@ -26,20 +19,6 @@
                     "sourcePort": "0_out",
                     "targetNode": "7",
                     "targetPort": "7_in"
-                },
-                {
-                    "id": "port_2_to_port_3",
-                    "sourceNode": "2",
-                    "sourcePort": "2_out",
-                    "targetNode": "3",
-                    "targetPort": "3_in"
-                },
-                {
-                    "id": "port_3_to_port_1",
-                    "sourceNode": "3",
-                    "sourcePort": "3_out",
-                    "targetNode": "1",
-                    "targetPort": "1_in"
                 },
                 {
                     "id": "port_4_to_port_6",
@@ -72,8 +51,8 @@
             ],
             "nodes": {
                 "0": {
-                    "x": 190,
-                    "y": 0,
+                    "x": 1260,
+                    "y": 200,
                     "id": "0",
                     "data": {
                         "id": "0",
@@ -88,8 +67,8 @@
                     "warnings": {}
                 },
                 "1": {
-                    "x": 190,
-                    "y": 1100,
+                    "x": 1260,
+                    "y": 644,
                     "id": "1",
                     "data": {
                         "id": "1",
@@ -102,94 +81,12 @@
                     },
                     "type": "end",
                     "errors": {},
-                    "userCode": "    ################################################################################\n\n    # Populate the generated `output` dict; the save after Custom Code End emits it.\n    # A branch that recorded nothing stopped before its note: report it FAIL.\n    for key in (\"test_connectivity\", \"get_ip_address\", \"list_subnets\"):\n        raw = phantom.get_run_data(key=key)\n        output[key] = json.loads(raw) if raw else \"FAIL\"\n    output[\"status\"] = \"pass\" if all(\n        output[key] == \"PASS\" for key in (\"test_connectivity\", \"get_ip_address\", \"list_subnets\")\n    ) else \"fail\"\n\n    ################################################################################\n",
-                    "warnings": {}
-                },
-                "2": {
-                    "x": 0,
-                    "y": 150,
-                    "id": "2",
-                    "data": {
-                        "id": "2",
-                        "tab": "byConnector",
-                        "loop": {
-                            "enabled": false,
-                            "pauseUnit": "m",
-                            "conditions": [
-                                {
-                                    "type": "if",
-                                    "logic": "and",
-                                    "comparisons": [
-                                        {
-                                            "op": "==",
-                                            "param": "",
-                                            "value": "",
-                                            "comparisonKey": "comparison_key_0"
-                                        }
-                                    ],
-                                    "conditionKey": "condition_key_0",
-                                    "conditionIndex": 0
-                                }
-                            ],
-                            "pauseValue": 2,
-                            "exitAfterUnit": "m",
-                            "exitLoopAfter": 2,
-                            "exitAfterValue": 10,
-                            "exitConditionEnabled": false
-                        },
-                        "type": "action",
-                        "action": "test connectivity",
-                        "advanced": {
-                            "join": [],
-                            "customName": "run test connectivity",
-                            "description": "Run 'test connectivity' on the selected EfficientIP DDI asset.",
-                            "customNameId": 0
-                        },
-                        "connector": "EfficientIP DDI",
-                        "actionType": "test",
-                        "functionId": 1,
-                        "parameters": {},
-                        "connectorId": "33986f6c-2005-4c3a-aa8b-d7a83caa76d0",
-                        "functionName": "run_test_connectivity",
-                        "connectorConfigs": [
-                            "efficientip_ddi mock"
-                        ],
-                        "connectorVersion": "v1",
-                        "requiredParameters": []
-                    },
-                    "type": "action",
-                    "errors": {},
-                    "warnings": {}
-                },
-                "3": {
-                    "x": 0,
-                    "y": 300,
-                    "id": "3",
-                    "data": {
-                        "id": "3",
-                        "type": "code",
-                        "advanced": {
-                            "join": [],
-                            "customName": "note test connectivity",
-                            "description": "Write the PASS/FAIL note for test connectivity.",
-                            "customNameId": 0
-                        },
-                        "functionId": 2,
-                        "functionName": "note_test_connectivity",
-                        "inputParameters": [
-                            "run_test_connectivity:action_result.status",
-                            "run_test_connectivity:action_result.message"
-                        ],
-                        "outputVariables": []
-                    },
-                    "type": "code",
-                    "errors": {},
-                    "userCode": "    ################################################################################\n\n    result = phantom.collect2(\n        container=container,\n        datapath=[\n            \"run_test_connectivity:action_result.status\",\n            \"run_test_connectivity:action_result.message\",\n        ],\n        action_results=results,\n    )\n    # No action result means SOAR refused to dispatch the action (it creates no\n    # app_run); the reason is in this playbook run's log, not in a result.\n    status, message = (result[0][0], result[0][1]) if result else (\n        \"failed\", \"No action result: SOAR did not dispatch the action. See this playbook run's log for the reason.\",\n    )\n    mark = \"PASS\" if status == \"success\" else \"FAIL\"\n\n    phantom.add_note(\n        container=container,\n        note_type=\"general\",\n        title=\"efficientip_ddi action test - test connectivity - {}\".format(mark),\n        content=\"**test connectivity:** {}\\n\\n{}\".format(mark, message or \"\"),\n        note_format=\"markdown\",\n    )\n    phantom.save_run_data(key=\"test_connectivity\", value=json.dumps(mark))\n\n    ################################################################################\n",
+                    "userCode": "    ################################################################################\n    ################################################################################\n\n    # Populate the generated `output` dict; the save after Custom Code End emits it.\n    # A branch that recorded nothing stopped before its note: report it FAIL.\n    for key in (\"get_ip_address\", \"list_subnets\"):\n        raw = phantom.get_run_data(key=key)\n        output[key] = json.loads(raw) if raw else \"FAIL\"\n    output[\"status\"] = \"pass\" if all(\n        output[key] == \"PASS\" for key in (\"get_ip_address\", \"list_subnets\")\n    ) else \"fail\"\n\n    ################################################################################\n    ################################################################################\n",
                     "warnings": {}
                 },
                 "4": {
-                    "x": 340,
-                    "y": 150,
+                    "x": 1240,
+                    "y": 348,
                     "id": "4",
                     "data": {
                         "id": "4",
@@ -253,8 +150,8 @@
                     "warnings": {}
                 },
                 "6": {
-                    "x": 340,
-                    "y": 450,
+                    "x": 1240,
+                    "y": 496,
                     "id": "6",
                     "data": {
                         "id": "6",
@@ -279,8 +176,8 @@
                     "warnings": {}
                 },
                 "7": {
-                    "x": 680,
-                    "y": 150,
+                    "x": 1580,
+                    "y": 348,
                     "id": "7",
                     "data": {
                         "id": "7",
@@ -338,8 +235,8 @@
                     "warnings": {}
                 },
                 "8": {
-                    "x": 680,
-                    "y": 300,
+                    "x": 1580,
+                    "y": 496,
                     "id": "8",
                     "data": {
                         "id": "8",
@@ -365,7 +262,7 @@
                 }
             },
             "notes": "",
-            "description": "Diagnostic data playbook for the EfficientIP DDI connector. Runs its 3 actions (test connectivity, get ip address, list subnets) through the real action dispatch path and writes one PASS/FAIL note per action. Optional inputs ip and subnet_name pick values that exist in your IPAM; blank uses the lab mock's seed values."
+            "description": "Runs get ip address and list subnets through the real action dispatch path and writes one PASS/FAIL note per action. Optional inputs ip and subnet_name pick values that exist in your IPAM; blank uses the lab mock's seed values. Test connectivity is not run here: use the asset's own Test Connectivity button."
         },
         "input_spec": [
             {
@@ -389,15 +286,7 @@
                 "metadata": {},
                 "datapaths": [],
                 "deduplicate": false,
-                "description": "pass when all 3 actions passed, else fail."
-            },
-            {
-                "name": "test_connectivity",
-                "contains": [],
-                "metadata": {},
-                "datapaths": [],
-                "deduplicate": false,
-                "description": "PASS or FAIL."
+                "description": "pass when both actions passed, else fail."
             },
             {
                 "name": "get_ip_address",
@@ -422,7 +311,7 @@
         "version": "8.6.0.530",
         "playbook_trigger": "artifact_created"
     },
-    "create_time": "2026-10-01T11:49:56.093159Z",
+    "create_time": "2026-10-01T13:33:06.556724Z",
     "draft_mode": false,
     "labels": [
         "events"

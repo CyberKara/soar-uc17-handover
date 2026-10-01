@@ -17,6 +17,40 @@
 > user). **Built + deployed + live-verified 2026-08-25 (later still)** — see
 > "Build + live-verify (2026-08-25)" below.
 
+## Enrich note as a table, several IPs per run (2026-10-01, user request) — live, save-tested
+
+`efficientip_ddi_enrich` takes one or more addresses in `ip` (commas, spaces, new
+lines; at most 50, the rest listed as skipped; invalid tokens listed, never sent).
+`get_ip_address`' Custom Code rebuilds the parameters as one set per address with
+`limit` 5 (an address can sit in several spaces): one app_run, one action result
+per address. `format_summary` is gone: `finalize` writes one markdown note: a summary
+line; a table with one row per IPAM record (IP, Hostname, Aliases, Subnet, Space,
+MAC, Class, Description, Lookup); and a "Per-IP detail" list (parent subnet, space
+class, IP (hex) `ip_addr` and raw `ip_class_parameters` per record -- every field the
+appliance returns is in the note except `ip_id`, an identifier, outputs only (user), the failure message per failed lookup, the IPv6 caveat per
+IPv6 not-found). It is split into "Title (k/N)" parts under 20,000 characters. Rows
+read `found` (`found (5+ records, more may exist)` at the cap), `not found`,
+`failed`, `failed (not dispatched)` (no action result: SOAR refused it), `invalid
+address`, `skipped`. Outputs: `status` = success / partial / not_found / failed
+(any lookup failed) / error (no valid address); every other output is a list,
+one entry per table row (`lookup`, `ip_address`, `hostname`, `aliases`, `subnet`,
+`parent_subnet`, `space`, `space_class`, `mac_address`, `ddi_class`,
+`description`, `ip_id`). No playbook in the repo consumed the old scalar outputs.
+Column set = what a real `get ip address` returned on the appliance (user,
+2026-10-01; connector README, Provenance) — connector v1.0.16 adds
+`parent_subnet_name`/`site_class_name`/`ip_alias` to the manifest and drops
+`multistatus` (built, not installed); both mock copies carry the three fields
+(the running mock needs a restart to serve them). Gates green (usercode sync, VPE
+shape, SOAR lint 0/0); the demo playbook is unchanged. **Verified live on soar8
+(2026-10-01):** multi-IP run (found, found, not found, invalid -> `partial`), IPv6
+not found (caveat line), invalid-only input (`error`, no action), no input (error
+note). Connector 1.0.16 installed, mock restarted with the three fields. **VPE save
+test passed:** the user's save (id 318, v12) changed only marker rule lines, one
+trailing space, a node position and the hash, reset the label scope to `*`, and
+re-ran green; the repo is that saved version with label `events`, redeployed as
+id 319 (v13). Not exercised (the mock cannot): a failed lookup and the 5-record
+cap; note splitting is tested offline only.
+
 ## Demo playbook `efficientip_ddi_enrich_demo` — lab copy of the user's appliance test (2026-10-01)
 
 The user built a test playbook on the airgapped appliance; the repo now carries the

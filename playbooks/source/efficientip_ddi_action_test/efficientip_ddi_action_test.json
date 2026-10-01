@@ -311,7 +311,7 @@
         "version": "8.6.0.530",
         "playbook_trigger": "artifact_created"
     },
-    "create_time": "2026-10-01T13:33:06.556724Z",
+    "create_time": "2026-10-01T19:45:41.921488Z",
     "draft_mode": false,
     "labels": [
         "events"

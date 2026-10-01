@@ -346,6 +346,19 @@ match, so even a probe asking "did it return a row?" would have said yes for
 either key. The mock now matches `subnet_name` only and deliberately does not
 also accept `name`.
 
+**`ip_address_list` on the target appliance returns 11 fields** (user, from a real
+`get ip address` result, 2026-10-01): `ip_id`, `ip_addr`, `subnet_name`,
+`site_name`, `name`, `mac_addr`, `ip_class_name`, `ip_class_parameters`,
+`parent_subnet_name`, `site_class_name`, `ip_alias`. The SOLIDserverRest method
+reference ([`docs/ip_address_list.md`](https://github.com/gregocgt/SOLIDserverRest/blob/master/docs/ip_address_list.md),
+a community fork, version unstated, and without `hostaddr`, which the appliance
+filters on) lists about 70 output fields, all 11 among them; `multistatus` is
+documented but not returned. The method takes no field selection (`where`,
+`orderby`, `offset`, `limit` only), so the subset is most likely fixed by the APIM
+in front of SOLIDserver -- inferred, not measured. Fields such as `pool_name`,
+`last_seen`, `dhcplease_end_time`, `hostdev_name` or `iplport_name` would have to be
+exposed there; no connector change can request them.
+
 **Still open:**
 
 - `list subnets`' `subnet_start_ip_addr`/`subnet_end_ip_addr` mapping is an
@@ -369,6 +382,16 @@ also accept `name`.
   yet seen on the appliance: whether every transient 401 is `FAIL FAIL`, and what a
   genuinely wrong credential returns (`OK OK` from the backend, or no header from
   the gateway). v1.0.14 stops retrying only the `OK` case.
+
+## v1.0.16 (2026-10-01) — `get ip address` outputs match the appliance
+
+Manifest only; no code change (the action already forwards every key it receives).
+The output datapaths now list what a real `get ip address` returned on the target
+appliance (user, 2026-10-01): `ip_id`, `ip_addr`, `subnet_name`, `site_name`,
+`name`, `mac_addr`, `ip_class_name`, `ip_class_parameters`, `parent_subnet_name`,
+`site_class_name`, `ip_alias`, plus the connector's own `address` and
+`description`. Added `parent_subnet_name`, `site_class_name` and `ip_alias`, so the
+VPE offers them; removed `multistatus`, which the appliance does not return.
 
 ## v1.0.15 (2026-10-01) — simplified (user request)
 

@@ -10,7 +10,7 @@
     "logo_dark": "logo_dark.svg",
     "publisher": "Ted",
     "license": "Copyright (c) 2026",
-    "app_version": "1.0.15",
+    "app_version": "1.0.16",
     "utctime_updated": "2026-10-01T14:26:14.765883Z",
     "package_name": "phantom_efficientip_ddi",
     "main_module": "efficientip_ddi_connector.py",
@@ -176,10 +176,6 @@
                     "data_type": "string"
                 },
                 {
-                    "data_path": "action_result.data.*.multistatus",
-                    "data_type": "string"
-                },
-                {
                     "data_path": "action_result.data.*.name",
                     "data_type": "string",
                     "contains": [
@@ -203,6 +199,18 @@
                 },
                 {
                     "data_path": "action_result.data.*.description",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.parent_subnet_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.site_class_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.ip_alias",
                     "data_type": "string"
                 },
                 {

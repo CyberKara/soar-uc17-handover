@@ -243,33 +243,25 @@ server already answered.
   `client_id`/`client_secret` and the client certificate.
 - Linear backoff between attempts, not immediate re-fire: rapid repeated auth
   failures are what trip gateway lockout and quota policies.
-- **Never silent.** Every attempt is logged with its peer address, and a call
-  that only succeeded on a later attempt reports `Succeeded on attempt N of M` in
-  the action result, so the gateway fault stays visible to the operator who has
-  to escalate it.
+- **Never silent.** A call that only succeeded on a later attempt reports
+  `Succeeded on attempt N of M` in the action result, so the gateway fault stays
+  visible to the operator who has to escalate it.
 
-Retry is a mitigation, not a diagnosis. It is designed so that running it
-produces *better* evidence than not running it: if attempt 1 fails at one peer
-address and attempt 2 succeeds at another, that single pair of log lines
-identifies a load-balanced node with inconsistent trust.
+### Debug logging
 
-### Reading the diagnostic log
+`debug_logging` (off by default) adds one `save_progress` line per HTTP call, which
+shows in both the App Debugger panel and the container action result (the only
+channels an operator without a shell has):
 
-Everything is written through `save_progress`, so it renders in both the App
-Debugger panel and the container action result — the only channel that reaches an
-operator with no shell. Secrets never print: auth headers, cookies and PEM
-material are replaced by a length and a SHA-256 prefix.
+```
+GET https://<apim>/<prefix>/rest/ip_address_list?limit=1&WHERE=hostaddr%3D%2710.1.2.3%27 -> HTTP 401  X-Backside-Transport=FAIL FAIL  APIm-Debug-Trans-Id=<id>  body: {"message": "..."}
+```
 
-| Line | Answers |
-|---|---|
-| `idle: Ns since last successful call` | Gap vs burst. Kept from the 401 hunt; on the appliance neither correlated (the cause was the APIM backend leg). |
-| `retry plan: up to N attempt(s) ...` | What this asset is configured to do. |
-| `attempt N/M: HTTP s from peer <ip:port>` | **Which node served this call** — the decisive line when a 401 follows one address while 200s follow another. |
-| `dns: <host> -> <addrs>` | Does the APIM name resolve to more than one node? |
-| `sent:` / `sent headers` | The request as `requests` encoded it, read off the PreparedRequest — not our intent. |
-| `response headers` | `WWW-Authenticate`, quota counters, gateway request-ids, cache markers. |
-| `received body` | Logged on success **and** failure — an intermittent fault is only readable by diffing a good call against a bad one. |
-| `parse: <branch>` | Which response branch was taken; an empty 204 and an empty JSON array both end as "no records". |
+The URL carries only `limit`/`WHERE`; the credentials travel in headers and are
+never printed. The body is cut at 500 characters. Until v1.0.14 this toggle drove a
+much larger trace (DNS peers, socket peer address, a replayable curl line, ambient
+proxy/netrc settings, PEM fingerprints, idle-gap timing); all of it was built to
+hunt the 401 and was removed in v1.0.15 once both causes were known.
 
 ## Building and installing
 
@@ -377,6 +369,27 @@ also accept `name`.
   yet seen on the appliance: whether every transient 401 is `FAIL FAIL`, and what a
   genuinely wrong credential returns (`OK OK` from the backend, or no header from
   the gateway). v1.0.14 stops retrying only the `OK` case.
+
+## v1.0.15 (2026-10-01) — simplified (user request)
+
+The 401 hunt left the connector at ~1,200 lines, about half of it instrumentation
+and narrative for theories that were later disproven. Both 401 causes are now known
+(the APIM's backend leg, `X-Backside-Transport: FAIL FAIL`; and the `X-IPM-*` header
+names), so the connector is cut to ~580 lines with the same actions, parameters,
+outputs, auth, retry and error messages:
+
+- **Removed:** DNS peer listing, socket peer address, replayable curl line, ambient
+  env/netrc probe, PEM fingerprints, idle-gap timer and its saved state, streamed
+  reads (needed only to read the peer address), per-attempt exchange dump,
+  `add_debug_data()` (SOAR drops it, 8.5 and 8.6), and the **`user_agent` asset
+  field** (a test knob for a disproven theory; an existing asset's stored value is
+  simply ignored).
+- **`debug_logging` now means one line per call** (see "Debug logging").
+- **Kept:** 401 retry with backoff (not retried under `X-Backside-Transport: OK OK`),
+  the 401 case in the message with the `APIm-Debug-Trans-Id`, `trust_env=False`,
+  the platform CA-bundle fallback, credential stripping, PEM normalisation.
+- `diagnostics/uc17_client_bisect.py` no longer ships in the handover (still in
+  `tools/`); `uc17_airgapped_probe.sh` stays for the range-filter probes.
 
 ## v1.0.14 (2026-10-01) — v1.0.12's appliance fixes brought home; IPv6; 401 split; review fixes
 

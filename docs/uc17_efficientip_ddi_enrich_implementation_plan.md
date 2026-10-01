@@ -45,6 +45,20 @@ lookup.
   design, matching the appliance copy; an optional `ip` input + `status` output
   would clear it (user decision).
 
+## Connector v1.0.15 — simplified (2026-10-01, user request)
+
+The connector had grown to ~1,200 lines through the 401 hunt. With both causes
+known (APIM backend leg `FAIL FAIL`; `X-IPM-*` header names), v1.0.15
+(`soar-connectors`, 2026-10-01) removes the instrumentation built for it (DNS peers,
+socket peer, curl replay, env/netrc probe, PEM fingerprints, idle-gap state,
+exchange dump, `add_debug_data`, the `user_agent` asset field): **~580 lines, same
+actions, outputs, auth, retry and messages.** `debug_logging` (user choice) is now
+one line per call: URL, status, `X-Backside-Transport`, `APIm-Debug-Trans-Id`, body
+start. `uc17_client_bisect.py` no longer ships in the handover (user choice); the
+probe script stays for the range filters. Verified on soar8: `uc17_verify.sh`
+green, enrich success / not_found / IPv6 / failed unchanged, test connectivity
+from the asset passes. **The appliance test below should use v1.0.15.**
+
 ## Review fixes, IPv6, 8.6 save-safe playbooks — connector v1.0.14 (2026-10-01)
 
 Closes the open findings of the 2026-09-24 review and brings both playbooks to

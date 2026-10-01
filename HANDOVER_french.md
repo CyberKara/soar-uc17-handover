@@ -1,6 +1,6 @@
 # UC17 — EfficientIP DDI Enrichment — Paquet de transfert (déploiement air-gapped)
 
-Généré le 2026-10-01 13:34 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
+Généré le 2026-10-01 14:27 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
 
 Ce paquet est autonome — tout ce qu'il faut pour déployer ce cas d'usage manuellement
 dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
@@ -11,7 +11,7 @@ dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
 
 | Chemin | Contenu |
 |--------|---------|
-| `connectors/` | Paquet(s) applicatif(s) connecteur : efficientip_ddi-v1.0.14.tgz |
+| `connectors/` | Paquet(s) applicatif(s) connecteur : efficientip_ddi-v1.0.15.tgz |
 | `connectors/source/` | Même(s) connecteur(s), extrait(s) — pour lecture, pas pour import |
 | `playbooks/*.tgz` (PB) | efficientip_ddi_enrich, efficientip_ddi_action_test |
 | `playbooks/source/` | Mêmes CF/playbooks, extraits — pour lecture, pas pour import |
@@ -27,7 +27,7 @@ d'installation.
 
 - **Ce qui s'applique dépend de ce qui est déjà installé — vérifiez d'abord la liste des applications.** Ouvrez Apps et recherchez `EfficientIP`. Si vous voyez **une seule** application (nommée `efficientip_ddi` / `EfficientIP DDI`), vous avez installé le paquet du 2026-08-31 ou un plus récent : celui-ci est une **mise à jour normale, sur place**. Installez-le par-dessus l'application existante — même identifiant interne — et votre actif (asset) existant continue de fonctionner avec tous ses identifiants. **Ne supprimez rien et ne ressaisissez aucun identifiant.** Si en revanche vous voyez **deux** applications (`efficientip_ddi` et `EfficientIP DDI (Classic)`), vous êtes encore sur un paquet antérieur au 2026-08-31, et c'est la note ci-dessous qui vous concerne.
 
-- **Le connecteur v1.0.14 et les deux playbooks ont changé (2026-10-01).** Il inclut la correction v1.0.12 du HTTP 401 permanent sur Test Connectivity (publiée le 2026-09-30) : les identifiants SOLIDserver partent en `X-IPM-Username` / `X-IPM-Password` (c'était `X-DDI-*`, qui faisait échouer chaque appel avec « The specified document is not valid JSON data »), et `get ip address` filtre sur `hostaddr` (il utilisait `host_addr`, qui n'existe pas sur l'appliance). **Vérifiez le `base_url` de l'asset : il doit inclure le préfixe de chemin de l'APIM placé avant `/rest`** (par exemple `https://apim.example/prefix/segment`) ; le connecteur y ajoute `/rest/<service>`. Installez le connecteur par-dessus l'application existante, en mise à jour sur place (votre asset et ses identifiants restent), puis ré-importez `efficientip_ddi_enrich` et `efficientip_ddi_action_test` pour qu'ils remplacent les versions précédentes. La sortie `status` d'`efficientip_ddi_enrich` valait `partial` aussi bien pour « absente de l'IPAM » que pour « recherche en échec » ; elle vaut maintenant `not_found` ou `failed`. Un de vos playbooks qui testait `partial` doit être modifié. `efficientip_ddi_action_test` prend maintenant les entrées facultatives `ip`/`subnet_name` (voir Vérification). Les deux playbooks sont conçus pour résister à un enregistrement : re-pointer leurs blocs d'action vers le nom de votre asset est sans risque.
+- **Le connecteur v1.0.15 et les deux playbooks ont changé (2026-10-01).** La v1.0.15 est le même connecteur, simplifié : les diagnostics ajoutés pendant la recherche du HTTP 401 sont retirés, le champ d'asset `user_agent` aussi (une valeur déjà saisie est ignorée), et `debug_logging` ajoute désormais une ligne par appel (URL, statut, `X-Backside-Transport`, `APIm-Debug-Trans-Id`, début de la réponse). Il inclut la correction v1.0.12 du HTTP 401 permanent sur Test Connectivity (publiée le 2026-09-30) : les identifiants SOLIDserver partent en `X-IPM-Username` / `X-IPM-Password` (c'était `X-DDI-*`, qui faisait échouer chaque appel avec « The specified document is not valid JSON data »), et `get ip address` filtre sur `hostaddr` (il utilisait `host_addr`, qui n'existe pas sur l'appliance). **Vérifiez le `base_url` de l'asset : il doit inclure le préfixe de chemin de l'APIM placé avant `/rest`** (par exemple `https://apim.example/prefix/segment`) ; le connecteur y ajoute `/rest/<service>`. Installez le connecteur par-dessus l'application existante, en mise à jour sur place (votre asset et ses identifiants restent), puis ré-importez `efficientip_ddi_enrich` et `efficientip_ddi_action_test` pour qu'ils remplacent les versions précédentes. La sortie `status` d'`efficientip_ddi_enrich` valait `partial` aussi bien pour « absente de l'IPAM » que pour « recherche en échec » ; elle vaut maintenant `not_found` ou `failed`. Un de vos playbooks qui testait `partial` doit être modifié. `efficientip_ddi_action_test` prend maintenant les entrées facultatives `ip`/`subnet_name` (voir Vérification). Les deux playbooks sont conçus pour résister à un enregistrement : re-pointer leurs blocs d'action vers le nom de votre asset est sans risque.
 
 - **Ce paquet retire deux actions du connecteur : `get ip pool` et `list aliases`** (connecteur v1.0.11). Le connecteur n'appelle plus que deux services SOLIDserver : `ip_address_list` (`get ip address`) et `ip_block_subnet_list` (`list subnets`, `test connectivity`). Après la mise à jour, tout playbook qui appelle encore une action retirée échoue à cette étape. Cela inclut les playbooks `efficientip_ddi_enrich` et `efficientip_ddi_action_test` de tout paquet précédent : réimportez les deux depuis ce paquet pour qu'ils remplacent les versions précédentes. Si vous avez construit vos propres playbooks sur `get ip pool` ou `list aliases`, retravaillez-les avant la mise à jour. Votre actif (asset) et ses identifiants ne sont pas concernés. Le nouveau `efficientip_ddi_enrich` corrige aussi sa note de synthèse : avec les paquets du 2026-08-31 au 2026-09-09, le nom d'hôte, le sous-réseau, l'espace, l'adresse MAC et la classe revenaient vides. Ils sont désormais renseignés.
 
@@ -86,7 +86,7 @@ d'installation.
 
 3. **Un HTTP 401 indique désormais de quel type il s'agit.** Le message cite l'en-tête `X-Backside-Transport` de la passerelle. `OK OK` : SOLIDserver lui-même a refusé les identifiants, vérifiez `ddi_username`/`ddi_password` (pas de nouvel essai). `FAIL FAIL` : l'APIM n'a pas pu joindre son backend ; ce n'est pas un problème d'identifiants, transmettez l'`APIm-Debug-Trans-Id` du message à l'administrateur de l'APIM. Pas d'en-tête : vérifiez `client_id`/`client_secret` et le certificat client. Notez lequel des trois vous voyez.
 
-Si une exécution échoue d'une façon que les notes n'expliquent pas, consultez `playbook.log`/`actiond.log` sur l'hôte SOAR cible. Pour un HTTP 401 sur une action, voir Diagnostics ci-dessous.
+Si une exécution échoue d'une façon que les notes n'expliquent pas, consultez `playbook.log`/`actiond.log` sur l'hôte SOAR cible. Pour plus de détail sur un appel en échec, cochez `debug_logging` sur l'asset : chaque résultat d'action affiche alors une ligne par appel (URL, statut, en-têtes de la passerelle, début de la réponse).
 
 ## Diagnostics
 
@@ -94,7 +94,6 @@ Si une exécution échoue d'une façon que les notes n'expliquent pas, consultez
 questions auxquelles ils répondent portent sur votre environnement et ne
 peuvent pas être tranchées depuis celui qui a produit ce paquet.
 
-- **`uc17_client_bisect.py`** — Exécute curl et Python contre l'appliance l'un après l'autre, en ne changeant qu'un seul paramètre par ligne, afin de localiser une erreur HTTP 401 que seul l'un des deux clients rencontre.
 - **`uc17_airgapped_probe.sh`** — Répond aux questions sur la forme de l'API que seule l'appliance réelle peut trancher : noms de champs réels, prise en compte d'un filtre, réponse renvoyée en cas d'absence de résultat.
 
 Tous sont en lecture seule (chaque appel est un GET), lisent les identifiants
@@ -109,21 +108,6 @@ export DDI_USER=...      DDI_PASS=...
 export DDI_CERT=/chemin/client.pem DDI_KEY=/chemin/client-key.pem
 export DDI_CA=/chemin/ca.pem   # facultatif ; omettre pour ne pas vérifier TLS
 ```
-
-Exécutez `uc17_client_bisect.py` avec le Python de SOAR, et non celui du système :
-un autre Python embarque d'autres bibliothèques HTTP et TLS, si bien qu'un
-résultat obtenu avec l'interpréteur système ne dit rien du comportement du
-connecteur :
-
-```bash
-/opt/phantom/bin/phenv python3 diagnostics/uc17_client_bisect.py
-```
-
-Facultatif, pour ce script uniquement :
-
-- `PROBE_PATH_OK` — un chemin de requête connu pour aboutir (défaut : une liste de sous-réseaux bornée)
-- `PROBE_PATH_BAD` — le chemin qui renvoie 401, si vous en avez un — la même matrice lui est appliquée
-- `PROBE_REPEATS` — tentatives par ligne (défaut 3) — augmentez-le si la panne est intermittente
 
 Exécutez `uc17_airgapped_probe.sh` :
 

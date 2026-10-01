@@ -10,8 +10,8 @@
     "logo_dark": "logo_dark.svg",
     "publisher": "Ted",
     "license": "Copyright (c) 2026",
-    "app_version": "1.0.14",
-    "utctime_updated": "2026-10-01T11:54:36.209950Z",
+    "app_version": "1.0.15",
+    "utctime_updated": "2026-10-01T14:26:14.765883Z",
     "package_name": "phantom_efficientip_ddi",
     "main_module": "efficientip_ddi_connector.py",
     "min_phantom_version": "6.4.1",
@@ -94,15 +94,8 @@
             "default": 2,
             "order": 11
         },
-        "user_agent": {
-            "description": "User-Agent header. Blank keeps the HTTP library default. Was a curl-string test knob for a 401 theory that the 2026-09-02 client bisect disproved (no UA correlation with outcome, root cause is an APIM/backend fault) -- shipping it forged on every request by default with no ongoing purpose, fixed to blank",
-            "data_type": "string",
-            "required": false,
-            "default": "",
-            "order": 12
-        },
         "debug_logging": {
-            "description": "Log the full HTTP exchange to the action's progress output (diagnostics only, off by default)",
+            "description": "Add one line per HTTP call to the action's progress output: URL (no credentials), status, X-Backside-Transport, APIm-Debug-Trans-Id, start of the body. Off by default.",
             "data_type": "boolean",
             "required": false,
             "default": false,

@@ -1,6 +1,6 @@
 # UC17 — EfficientIP DDI Enrichment — Air-Gapped Handover Package
 
-Generated 2026-10-01 13:34 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
+Generated 2026-10-01 14:27 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
 
 This package is self-contained — everything needed to deploy this use case by hand
 in an environment with no network access back to this repo or to `soar8`.
@@ -11,7 +11,7 @@ in an environment with no network access back to this repo or to `soar8`.
 
 | Path | What |
 |------|------|
-| `connectors/` | Connector app package(s): efficientip_ddi-v1.0.14.tgz |
+| `connectors/` | Connector app package(s): efficientip_ddi-v1.0.15.tgz |
 | `connectors/source/` | Same connector(s), extracted — for reading, not for import |
 | `playbooks/*.tgz` (PBs) | efficientip_ddi_enrich, efficientip_ddi_action_test |
 | `playbooks/source/` | Same CFs/playbooks, extracted — for reading, not for import |
@@ -26,7 +26,7 @@ previous package. On a completely fresh target, skip to Install order.
 
 - **Which of these applies depends on what is already installed — check the Apps list first.** Open Apps and search for `EfficientIP`. If you see **exactly one** app (named `efficientip_ddi` / `EfficientIP DDI`), you installed the 2026-08-31 package or later: this one is a **normal in-place upgrade**. Install it over the existing app — same internal identifier — and your existing asset keeps working with every credential intact. **Do not delete anything and do not re-enter any credential.** If instead you see **two** apps (an `efficientip_ddi` and an `EfficientIP DDI (Classic)`), you are still on a package older than 2026-08-31, and the note below applies to you instead.
 
-- **Connector v1.0.14 and both playbooks changed (2026-10-01).** It includes the v1.0.12 fix for the constant HTTP 401 on Test Connectivity (published 2026-09-30): the SOLIDserver credentials go out as `X-IPM-Username` / `X-IPM-Password` (they were `X-DDI-*`, which failed every call with "The specified document is not valid JSON data"), and `get ip address` filters on `hostaddr` (it used `host_addr`, which does not exist on the appliance). **Check the asset's `base_url`: it must include the APIM path prefix that comes before `/rest`** (for example `https://apim.example/prefix/segment`); the connector appends `/rest/<service>` to it. Install the connector over the existing app as an in-place upgrade (your asset and credentials stay), then re-import `efficientip_ddi_enrich` and `efficientip_ddi_action_test` so they replace the earlier versions. `efficientip_ddi_enrich`'s output `status` used to be `partial` for both "not in IPAM" and "lookup failed"; it is now `not_found` or `failed`. A playbook of yours that tested for `partial` must be changed. `efficientip_ddi_action_test` now takes optional `ip`/`subnet_name` inputs (see Verification). Both playbooks are built to survive a save, so re-pointing their action blocks to your own asset name is safe.
+- **Connector v1.0.15 and both playbooks changed (2026-10-01).** v1.0.15 is the same connector made simpler: the extra diagnostics built while chasing the HTTP 401 are gone, the `user_agent` asset field is gone (a value already saved in it is ignored), and `debug_logging` now adds one line per call (URL, status, `X-Backside-Transport`, `APIm-Debug-Trans-Id`, start of the body). It includes the v1.0.12 fix for the constant HTTP 401 on Test Connectivity (published 2026-09-30): the SOLIDserver credentials go out as `X-IPM-Username` / `X-IPM-Password` (they were `X-DDI-*`, which failed every call with "The specified document is not valid JSON data"), and `get ip address` filters on `hostaddr` (it used `host_addr`, which does not exist on the appliance). **Check the asset's `base_url`: it must include the APIM path prefix that comes before `/rest`** (for example `https://apim.example/prefix/segment`); the connector appends `/rest/<service>` to it. Install the connector over the existing app as an in-place upgrade (your asset and credentials stay), then re-import `efficientip_ddi_enrich` and `efficientip_ddi_action_test` so they replace the earlier versions. `efficientip_ddi_enrich`'s output `status` used to be `partial` for both "not in IPAM" and "lookup failed"; it is now `not_found` or `failed`. A playbook of yours that tested for `partial` must be changed. `efficientip_ddi_action_test` now takes optional `ip`/`subnet_name` inputs (see Verification). Both playbooks are built to survive a save, so re-pointing their action blocks to your own asset name is safe.
 
 - **This package removes two connector actions: `get ip pool` and `list aliases`** (connector v1.0.11). The connector now calls only two SOLIDserver services: `ip_address_list` (`get ip address`) and `ip_block_subnet_list` (`list subnets`, `test connectivity`). After upgrading, any playbook that still calls a removed action fails at that step. That includes the `efficientip_ddi_enrich` and `efficientip_ddi_action_test` playbooks from any earlier package, so re-import both from this package so they replace the earlier versions. If you built playbooks of your own on `get ip pool` or `list aliases`, rework them before upgrading. Your asset and its credentials are not affected. The new `efficientip_ddi_enrich` also fixes its summary note: with packages from 2026-08-31 to 2026-09-09, hostname, subnet, space, MAC address and class came back empty. They are filled in now.
 
@@ -80,7 +80,7 @@ previous package. On a completely fresh target, skip to Install order.
 
 3. **An HTTP 401 now says which kind it is.** The message names the gateway's `X-Backside-Transport` header. `OK OK`: SOLIDserver itself refused the credentials, so check `ddi_username`/`ddi_password` (no retry). `FAIL FAIL`: the APIM could not reach its backend; not a credential problem, so give the `APIm-Debug-Trans-Id` in the message to the APIM administrator. No header: check `client_id`/`client_secret` and the client certificate. Please note which of the three you see.
 
-If a run fails in a way the notes do not explain, check `playbook.log`/`actiond.log` on the target SOAR host. For an HTTP 401 on any action, see Diagnostics below.
+If a run fails in a way the notes do not explain, check `playbook.log`/`actiond.log` on the target SOAR host. For more detail on any failing call, tick the asset's `debug_logging`: each action result then shows one line per call (URL, status, gateway headers, start of the body).
 
 ## Diagnostics
 
@@ -88,7 +88,6 @@ If a run fails in a way the notes do not explain, check `playbook.log`/`actiond.
 questions they answer are about your environment and cannot be answered from
 the environment that built this package.
 
-- **`uc17_client_bisect.py`** — Runs curl and Python against the appliance back to back, varying one thing per row, to locate an HTTP 401 that only one of the two clients sees.
 - **`uc17_airgapped_probe.sh`** — Answers the API-shape questions only the real appliance can answer: real field names, whether a filter is honoured, what 'not found' returns.
 
 All of them are read-only (every call is a GET), they read credentials from
@@ -103,20 +102,6 @@ export DDI_USER=...      DDI_PASS=...
 export DDI_CERT=/path/client.pem DDI_KEY=/path/client-key.pem
 export DDI_CA=/path/ca.pem     # optional; omit to skip TLS verification
 ```
-
-Run `uc17_client_bisect.py` with the SOAR Python, not the system one — a different
-Python has different HTTP and TLS libraries, so a result from the system
-interpreter says nothing about how the connector behaves:
-
-```bash
-/opt/phantom/bin/phenv python3 diagnostics/uc17_client_bisect.py
-```
-
-Optional, for this script only:
-
-- `PROBE_PATH_OK` — a request path known to succeed (default: a bounded subnet list)
-- `PROBE_PATH_BAD` — the path that returns 401, if you have one — runs the same matrix against it
-- `PROBE_REPEATS` — attempts per row (default 3) — raise it if the fault is intermittent
 
 Run `uc17_airgapped_probe.sh`:
 

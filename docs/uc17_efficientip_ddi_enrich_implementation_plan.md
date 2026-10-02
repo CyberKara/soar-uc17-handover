@@ -24,11 +24,15 @@ lines; at most 50, the rest listed as skipped; invalid tokens listed, never sent
 `get_ip_address`' Custom Code rebuilds the parameters as one set per address with
 `limit` 5 (an address can sit in several spaces): one app_run, one action result
 per address. `format_summary` is gone: `finalize` writes one markdown note: a summary
-line; a table with one row per IPAM record (IP, Hostname, Aliases, Subnet, Space,
-MAC, Class, Description, Lookup); and a "Per-IP detail" list (parent subnet, space
-class, IP (hex) `ip_addr` and raw `ip_class_parameters` per record -- every field the
-appliance returns is in the note except `ip_id`, an identifier, outputs only (user), the failure message per failed lookup, the IPv6 caveat per
-IPv6 not-found). It is split into "Title (k/N)" parts under 20,000 characters. Rows
+line; a table with one row per IPAM record (IP, Hostname, Aliases, Subnet, Parent
+subnet, Lookup); and a "Per-IP detail" section, one block per record: the bold IP
+then one `- field: value` line each for space, space class, MAC, class, description,
+IP (hex) `ip_addr` and raw `ip_class_parameters` (`-` when empty) -- every field the
+appliance returns is in the note except `ip_id`, an identifier, outputs only (user);
+a failed lookup's block carries its message, an IPv6 not-found's the caveat. Layout
+changed 2026-10-02 (user: Space/MAC/Class/Description out of the table, Parent subnet
+into it, detail as a per-IP list) -- live as id 331, runs 4157/4158 on container 144
+(notes 1877/1878). It is split into "Title (k/N)" parts under 20,000 characters, never inside a block. Rows
 read `found` (`found (5+ records, more may exist)` at the cap), `not found`,
 `failed`, `failed (not dispatched)` (no action result: SOAR refused it), `invalid
 address`, `skipped`. Outputs: `status` = success / partial / not_found / failed

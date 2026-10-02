@@ -28,8 +28,8 @@ DDI_RECORD_LIMIT = 5
 DDI_NOTE_CAP = 19000
 DDI_NOT_FOUND_PREFIX = "No IP address record found"
 DDI_TABLE_HEADER = [
-    "| IP | Hostname | Aliases | Subnet | Space | MAC | Class | Description | Lookup |",
-    "|---|---|---|---|---|---|---|---|---|",
+    "| IP | Hostname | Aliases | Subnet | Parent subnet | Lookup |",
+    "|---|---|---|---|---|---|",
 ]
 
 
@@ -236,10 +236,7 @@ def finalize(action=None, success=None, container=None, results=None, handle=Non
             record.get("name"),
             record.get("ip_alias"),
             record.get("subnet_name"),
-            record.get("site_name"),
-            record.get("mac_addr"),
-            record.get("ip_class_name"),
-            record.get("description"),
+            record.get("parent_subnet_name"),
             lookup,
         ]) + " |")
         rows.append({
@@ -268,26 +265,31 @@ def finalize(action=None, success=None, container=None, results=None, handle=Non
                 where = " (space {})".format(_ddi_md(record.get("site_name"))) if len(records) > 1 else ""
                 # Every field the appliance returns is in the note (user
                 # requirement) except ip_id, a bare identifier (outputs only).
-                detail.append("- **{}**{}: parent subnet {}; space class {}; IP (hex) {}; class parameters {}".format(
-                    _ddi_md(address), where,
-                    _ddi_md(record.get("parent_subnet_name")) or "-",
-                    _ddi_md(record.get("site_class_name")) or "-",
-                    _ddi_md(record.get("ip_addr")) or "-",
-                    _ddi_md(record.get("ip_class_parameters")) or "-",
-                ))
+                detail.append("\n".join(["**{}**{}".format(_ddi_md(address), where)] + [
+                    "- {}: {}".format(label_text, _ddi_md(record.get(key)) or "-")
+                    for label_text, key in [
+                        ("space", "site_name"),
+                        ("space class", "site_class_name"),
+                        ("MAC", "mac_addr"),
+                        ("class", "ip_class_name"),
+                        ("description", "description"),
+                        ("IP (hex)", "ip_addr"),
+                        ("class parameters", "ip_class_parameters"),
+                    ]
+                ]))
         elif lookup and lookup["message"].startswith(DDI_NOT_FOUND_PREFIX):
             counts["not_found"] += 1
             add_row(address, None, "not found")
             if ":" in address:
-                detail.append("- **{}**: not found; IPv6 lookups are unverified on this API, so this is not proof of absence".format(_ddi_md(address)))
+                detail.append("**{}**\n- not found: IPv6 lookups are unverified on this API, so this is not proof of absence".format(_ddi_md(address)))
         else:
             counts["failed"] += 1
             if lookup:
                 add_row(address, None, "failed")
-                detail.append("- **{}**: lookup failed: {}".format(_ddi_md(address), _ddi_md(lookup["message"][:300]) or "no message"))
+                detail.append("**{}**\n- lookup failed: {}".format(_ddi_md(address), _ddi_md(lookup["message"][:300]) or "no message"))
             else:
                 add_row(address, None, "failed (not dispatched)")
-                detail.append("- **{}**: SOAR did not run the lookup; the reason is in this playbook run".format(_ddi_md(address)))
+                detail.append("**{}**\n- SOAR did not run the lookup; the reason is in this playbook run".format(_ddi_md(address)))
     for part in invalid:
         add_row(part, None, "invalid address")
     for address in skipped:
@@ -314,8 +316,12 @@ def finalize(action=None, success=None, container=None, results=None, handle=Non
     lines = [("**Lookup:** {}".format(summary), False), ("", False)]
     lines += [(line, True) for line in DDI_TABLE_HEADER + table]
     if detail:
-        lines += [("", False), ("### Per-IP detail", False), ("", False)]
-        lines += [(line, False) for line in detail]
+        lines += [("", False), ("### Per-IP detail", False)]
+        # One block per record (bold IP + its field list), a blank line before
+        # each so the next IP never reads as part of the previous list. A block
+        # is one entry, so a note split never cuts through it.
+        for block in detail:
+            lines += [("", False), (block, False)]
 
     title = "EfficientIP DDI Enrichment"
     parts = _ddi_note_parts(lines)

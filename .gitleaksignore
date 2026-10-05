@@ -87,9 +87,11 @@ connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:495
 # 2026-10-02 - repinned 138/155/189 -> 131/148/182. The multi-IP rebuild pushed in
 # 99ac44b moved them and was not repinned then; verified in 99ac44b's own copy and
 # in this one: each line is a "comparisonKey" field and nothing else.
-playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:131
-playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:148
-playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:182
+# 2026-10-05 - enrich became an automation playbook (2026-10-02): the check_input
+# decision block and its two comparisonKeys are gone, 3 -> 1 pin. The one left is
+# the get_ip_address action block's unused loop-condition placeholder
+# "comparison_key_0" (verified: a comparisonKey field and nothing else on the line).
+playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:118
 # 2026-10-01 - efficientip_ddi_action_test was rebuilt in the 8.6 VPE shape, so
 # its three action blocks now carry the same unused loop-condition
 # comparisonKey placeholder (key suffix 0; verified: nothing else on these lines).

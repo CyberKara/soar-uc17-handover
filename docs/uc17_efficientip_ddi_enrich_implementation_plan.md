@@ -17,6 +17,43 @@
 > user). **Built + deployed + live-verified 2026-08-25 (later still)** — see
 > "Build + live-verify (2026-08-25)" below.
 
+## Enrich is an automation playbook (2026-10-02, user request) — live
+
+The user asked for `efficientip_ddi_enrich` to stop being an Input (data) playbook:
+it is now **automation, trigger `artifact_created`, label `events`** (the label it
+already carried; no other active playbook uses it on soar8). No `ip` input and no
+outputs any more (nothing in the repo consumed them). Flow: start → `collect_ips`
+(code) → `get_ip_address` (action, `address` bound to
+`collect_ips:custom_function:addresses`, Custom Code rebuilds one parameter set per
+address) → `finalize` (code, the note) → end. `check_input`, `format_error` and
+`note_error` are gone.
+
+- **Which addresses:** `phantom.collect_from_contains(contains=["ip", "ipv6"])` —
+  every value of an artifact field SOAR types as ip/ipv6 (the CEF registry plus each
+  artifact's own `cef_types`), from the artifacts in the run's scope (the new ones on
+  a triggered run). A field not typed ip is ignored even when it holds an address
+  (`deviceCustomString1` in the test). Values that do not parse as an address are
+  dropped silently (no `invalid address` rows any more).
+- **Once per address per container:** `collect_ips` reads the container's earlier
+  `EfficientIP DDI Enrichment*` notes (REST, `_filter_title__startswith`) and drops
+  every address whose row there says `found…`/`not found`; a `failed` or `skipped`
+  one is looked up again on the next artifact. Nothing left → the run stops in
+  `collect_ips` with a debug line, no note. Old 9-column notes parse too (first cell
+  = IP, last = lookup).
+- At most 50 addresses per run; the rest are `skipped (over 50 addresses, next run)`.
+- **Tested 2026-10-02 on soar8 (id 343, active):** container 1925 — artifact 1
+  (`sourceAddress` .40, `destinationAddress` 192.0.2.1, cs1 .99) → run 4230, note
+  1940 (.40 found, 192.0.2.1 not found, cs1 ignored); artifact 2 (.40 + .99) → run
+  4231, note 1941 with .99 only; artifact 3 (.40 + 192.0.2.1) → run 4232, no note.
+  `uc17_verify.sh playbook` now creates a fresh `events` container with one artifact
+  (container 1926: same note).
+- **VPE save test passed (2026-10-05):** the user's save is id 346 (v16), still
+  automation, active, label `events`, validation true. It changed only marker rule
+  lines in the `.py`, the docstring's apostrophe (escaped `&#39;`), block positions
+  and the hash; no Custom Code, binding or trigger. The saved version then ran green
+  (`uc17_verify.sh playbook`, container 2484, note 3387) and the guard held (second
+  artifact → note 3388 with the new address only). The repo is that saved version.
+
 ## Enrich note as a table, several IPs per run (2026-10-01, user request) — live, save-tested
 
 `efficientip_ddi_enrich` takes one or more addresses in `ip` (commas, spaces, new
@@ -32,7 +69,7 @@ appliance returns is in the note except `ip_id`, an identifier, outputs only (us
 a failed lookup's block carries its message, an IPv6 not-found's the caveat. Layout
 changed 2026-10-02 (user: Space/MAC/Class/Description out of the table, Parent subnet
 into it, detail as a per-IP list) -- live as id 331, runs 4157/4158 on container 144
-(notes 1877/1878). It is split into "Title (k/N)" parts under 20,000 characters, never inside a block. Rows
+(notes 1877/1878); handover mirror `171b8b0`. It is split into "Title (k/N)" parts under 20,000 characters, never inside a block. Rows
 read `found` (`found (5+ records, more may exist)` at the cap), `not found`,
 `failed`, `failed (not dispatched)` (no action result: SOAR refused it), `invalid
 address`, `skipped`. Outputs: `status` = success / partial / not_found / failed

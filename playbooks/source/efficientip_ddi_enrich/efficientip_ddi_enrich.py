@@ -1,5 +1,5 @@
 """
-Data playbook for EfficientIP DDI (SOLIDserver) IP address enrichment. Looks up one or more IPs in IPAM and writes a note with a table (one row per record) and a per-IP detail list. Output status: success (every address found), partial, not_found (no address found), failed (at least one lookup itself failed) or error (no valid ip input).
+Automation playbook for EfficientIP DDI (SOLIDserver) IP address enrichment. Runs when an artifact is created on a container with this playbook&#39;s label, looks up every IP address those new artifacts carry (any field SOAR types as ip or ipv6) that no earlier enrichment note on the container already answers, and writes a note with a table (one row per record) and a per-IP detail section.
 """
 
 
@@ -13,12 +13,13 @@ from datetime import datetime, timedelta
 ################################################################################
 ################################################################################
 ################################################################################
+################################################################################
 
 import ipaddress
 import re
 
-# Addresses looked up per run; the rest are listed as skipped. Keeps the note
-# readable and bounds the number of lookups one launch can start.
+# Addresses looked up per run; the rest are listed as skipped and looked up on
+# the next run. Keeps the note readable and bounds one run's lookups.
 DDI_MAX_ADDRESSES = 50
 # Records asked per address ("limit" of get ip address). SOLIDserver can hold
 # the same address in several spaces; a row reaching this count is flagged.
@@ -26,38 +27,54 @@ DDI_RECORD_LIMIT = 5
 # The airgapped appliance cuts a note at about 22,000 characters
 # (constraints.md); longer content is split into "Title (k/N)" notes.
 DDI_NOTE_CAP = 19000
+DDI_NOTE_TITLE = "EfficientIP DDI Enrichment"
 DDI_NOT_FOUND_PREFIX = "No IP address record found"
 DDI_TABLE_HEADER = [
     "| IP | Hostname | Aliases | Subnet | Parent subnet | Lookup |",
     "|---|---|---|---|---|---|",
 ]
+# Lookup results that answer an address for good. A "failed" or "skipped" row
+# does not, so that address is looked up again on the next run.
+DDI_ANSWERED_PREFIXES = ("found", "not found")
 
 
-def _ddi_split_addresses(values):
-    """Split playbook_input:ip values into (valid, invalid, skipped) lists.
+def _ddi_valid_addresses(values):
+    """Normalise artifact values to unique IP addresses, in order.
 
-    Accepts commas, semicolons, spaces and new lines as separators; valid
-    addresses are normalised (compressed IPv6) and de-duplicated in input order.
+    A value may hold several addresses (commas, semicolons, spaces, new lines);
+    anything that is not an address is ignored. IPv6 is compressed.
     """
-    valid, invalid, skipped = [], [], []
+    addresses = []
     for value in values:
         for part in re.split(r"[\s,;]+", str(value or "")):
-            part = part.strip()
-            if not part:
+            try:
+                address = str(ipaddress.ip_address(part.strip()))
+            except ValueError:
+                continue
+            if address not in addresses:
+                addresses.append(address)
+    return addresses
+
+
+def _ddi_answered_addresses(note_bodies):
+    """Addresses an earlier enrichment note already answered (found / not found).
+
+    Reads the table rows: the first cell is the address, the last the lookup.
+    Cells are escaped by _ddi_md(), so " | " only ever separates cells.
+    """
+    answered = set()
+    for body in note_bodies:
+        for line in str(body or "").splitlines():
+            if not line.startswith("| ") or line.startswith("| IP |"):
+                continue
+            cells = line.strip().strip("|").split(" | ")
+            if len(cells) < 2 or not cells[-1].strip().startswith(DDI_ANSWERED_PREFIXES):
                 continue
             try:
-                address = str(ipaddress.ip_address(part))
+                answered.add(str(ipaddress.ip_address(cells[0].strip())))
             except ValueError:
-                if part not in invalid:
-                    invalid.append(part)
                 continue
-            if address in valid or address in skipped:
-                continue
-            if len(valid) < DDI_MAX_ADDRESSES:
-                valid.append(address)
-            else:
-                skipped.append(address)
-    return valid, invalid, skipped
+    return answered
 
 
 def _ddi_md(value):
@@ -83,6 +100,7 @@ def _ddi_note_parts(lines):
 ################################################################################
 ################################################################################
 ################################################################################
+################################################################################
 ## Global Custom Code End
 ################################################################################
 
@@ -90,34 +108,80 @@ def _ddi_note_parts(lines):
 def on_start(container):
     phantom.debug('on_start() called')
 
-    # call 'check_input' block
-    check_input(container=container)
+    # call 'collect_ips' block
+    collect_ips(container=container)
 
     return
 
 @phantom.playbook_block()
-def check_input(action=None, success=None, container=None, results=None, handle=None, filtered_artifacts=None, filtered_results=None, custom_function=None, loop_state_json=None, **kwargs):
-    phantom.debug("check_input() called")
+def collect_ips(action=None, success=None, container=None, results=None, handle=None, filtered_artifacts=None, filtered_results=None, custom_function=None, loop_state_json=None, **kwargs):
+    phantom.debug("collect_ips() called")
 
-    # check for 'if' condition 1
-    found_match_1 = phantom.decision(
-        container=container,
-        conditions=[
-            ["playbook_input:ip", "!=", ""]
-        ],
-        conditions_dps=[
-            ["playbook_input:ip", "!=", ""]
-        ],
-        name="check_input:condition_1",
-        delimiter=",")
+    ################################################################################
+    # Collect the IPs of the new artifacts not already in an enrichment note.
+    ################################################################################
 
-    # call connected blocks if condition 1 matched
-    if found_match_1:
-        get_ip_address(action=action, success=success, container=container, results=results, handle=handle)
+    collect_ips__addresses = None
+
+    ################################################################################
+    ## Custom Code Start
+    ################################################################################
+    ################################################################################
+    ################################################################################
+    ################################################################################
+
+    # Every value of an artifact field SOAR types as ip or ipv6 (the CEF
+    # registry plus each artifact's own cef_types), from the artifacts in this
+    # run's scope: the new ones when an artifact creation started the run.
+    values = phantom.collect_from_contains(container=container, contains=["ip", "ipv6"]) or []
+    addresses = _ddi_valid_addresses(values)
+
+    # This playbook runs on every artifact created on the container: an address
+    # an earlier note already answered (found / not found) is not looked up
+    # again. A failed or skipped one is.
+    answered = set()
+    if addresses:
+        url = phantom.build_phantom_rest_url("note")
+        response = phantom.requests.get(
+            url,
+            params={
+                "_filter_container": container["id"],
+                "_filter_title__startswith": '"{}"'.format(DDI_NOTE_TITLE),
+                "page_size": 0,
+            },
+            verify=False,
+        )
+        if response.status_code == 200:
+            answered = _ddi_answered_addresses(
+                note.get("content") for note in response.json().get("data", [])
+                if str(note.get("title") or "").startswith(DDI_NOTE_TITLE)
+            )
+        else:
+            phantom.debug("Could not read earlier enrichment notes (HTTP {}); looking up every address".format(response.status_code))
+
+    pending = [address for address in addresses if address not in answered]
+    if not pending:
+        phantom.debug("No new IP address to enrich ({} seen, {} already in a note)".format(len(addresses), len(answered & set(addresses))))
         return
 
-    # check for 'else' condition 2
-    format_error(action=action, success=success, container=container, results=results, handle=handle)
+    collect_ips__addresses = pending[:DDI_MAX_ADDRESSES]
+    phantom.save_run_data(key="get_ip_address:input", value=json.dumps({
+        "addresses": collect_ips__addresses,
+        "skipped": pending[DDI_MAX_ADDRESSES:],
+    }))
+
+    ################################################################################
+    ################################################################################
+    ################################################################################
+    ################################################################################
+    ## Custom Code End
+    ################################################################################
+
+    phantom.save_block_result(key="collect_ips:addresses", value=json.dumps(collect_ips__addresses))
+
+    phantom.save_block_result(key="collect_ips_called", value="True")
+
+    get_ip_address(container=container)
 
     return
 
@@ -129,47 +193,37 @@ def get_ip_address(action=None, success=None, container=None, results=None, hand
     # phantom.debug('Action: {0} {1}'.format(action['name'], ('SUCCEEDED' if success else 'FAILED')))
 
     ################################################################################
-    # Look up every playbook_input ip in SOLIDserver's IPAM, one action result per 
-    # address.
+    # Look up every collected IP in SOLIDserver's IPAM, one action result each.
     ################################################################################
 
-    playbook_input_ip = phantom.collect2(container=container, datapath=["playbook_input:ip"])
+    collect_ips__addresses = json.loads(_ if (_ := phantom.get_run_data(key="collect_ips:addresses")) != "" else "null")  # pylint: disable=used-before-assignment
 
     parameters = []
 
-    # build parameters list for 'get_ip_address' call
-    for playbook_input_ip_item in playbook_input_ip:
-        if playbook_input_ip_item[0] is not None:
-            parameters.append({
-                "address": playbook_input_ip_item[0],
-            })
+    if collect_ips__addresses is not None:
+        parameters.append({
+            "address": collect_ips__addresses,
+        })
 
     ################################################################################
     ## Custom Code Start
     ################################################################################
     ################################################################################
     ################################################################################
+    ################################################################################
 
-    # The input may hold several addresses (comma/space/new-line separated, or
-    # several values). Rebuild the parameters as one set per valid address, so
-    # the phantom.act() below returns one action result per address (one app_run
-    # on whichever asset this block selects). This lives here because a VPE save keeps this section
-    # and rebuilds the generated code above from the bindings.
-    raw_values = [item[0] for item in phantom.collect2(container=container, datapath=["playbook_input:ip"])]
-    addresses, invalid, skipped = _ddi_split_addresses(raw_values)
-    phantom.save_run_data(key="get_ip_address:input", value=json.dumps({
-        "addresses": addresses,
-        "invalid": invalid,
-        "skipped": skipped,
-    }))
-
-    parameters = [{"address": address, "limit": DDI_RECORD_LIMIT} for address in addresses]
+    # Rebuild the parameters as one set per address, so the phantom.act() below
+    # returns one action result per address (one app_run on whichever asset this
+    # block selects). This lives here because a VPE save keeps this section and
+    # rebuilds the generated code above from the bindings.
+    run_input = json.loads(phantom.get_run_data(key="get_ip_address:input") or "{}")
+    parameters = [{"address": address, "limit": DDI_RECORD_LIMIT} for address in run_input.get("addresses") or []]
 
     if not parameters:
-        # Nothing valid to look up: no action, straight to the note.
-        finalize(container=container)
+        phantom.debug("No address to look up")
         return
 
+    ################################################################################
     ################################################################################
     ################################################################################
     ################################################################################
@@ -186,8 +240,7 @@ def finalize(action=None, success=None, container=None, results=None, handle=Non
     phantom.debug("finalize() called")
 
     ################################################################################
-    # Write the enrichment note (table + per-IP detail) and expose the rows for a 
-    # parent playbook.
+    # Write the enrichment note: a table plus a per-IP detail section.
     ################################################################################
 
     get_ip_address_result_data = phantom.collect2(container=container, datapath=["get_ip_address:action_result.parameter.address","get_ip_address:action_result.status","get_ip_address:action_result.message","get_ip_address:action_result.data"], action_results=results)
@@ -202,10 +255,10 @@ def finalize(action=None, success=None, container=None, results=None, handle=Non
     ################################################################################
     ################################################################################
     ################################################################################
+    ################################################################################
 
     run_input = json.loads(phantom.get_run_data(key="get_ip_address:input") or "{}")
     addresses = run_input.get("addresses") or []
-    invalid = run_input.get("invalid") or []
     skipped = run_input.get("skipped") or []
 
     # One entry per action result, keyed by the address it was dispatched with.
@@ -226,7 +279,6 @@ def finalize(action=None, success=None, container=None, results=None, handle=Non
             lookups[row[0]] = {"status": row[1], "message": row[2] or "", "records": row[3] or []}
 
     table, detail = [], []
-    rows = []  # one per table row, for the outputs
     counts = {"found": 0, "not_found": 0, "failed": 0}
 
     def add_row(address, record, lookup):
@@ -239,20 +291,6 @@ def finalize(action=None, success=None, container=None, results=None, handle=Non
             record.get("parent_subnet_name"),
             lookup,
         ]) + " |")
-        rows.append({
-            "lookup": lookup,
-            "ip_address": address,
-            "hostname": record.get("name") or "",
-            "aliases": record.get("ip_alias") or "",
-            "subnet": record.get("subnet_name") or "",
-            "parent_subnet": record.get("parent_subnet_name") or "",
-            "space": record.get("site_name") or "",
-            "space_class": record.get("site_class_name") or "",
-            "mac_address": record.get("mac_addr") or "",
-            "ddi_class": record.get("ip_class_name") or "",
-            "description": record.get("description") or "",
-            "ip_id": str(record.get("ip_id") or ""),
-        })
 
     for address in addresses:
         lookup = lookups.get(address)
@@ -264,7 +302,7 @@ def finalize(action=None, success=None, container=None, results=None, handle=Non
                 add_row(address, record, label)
                 where = " (space {})".format(_ddi_md(record.get("site_name"))) if len(records) > 1 else ""
                 # Every field the appliance returns is in the note (user
-                # requirement) except ip_id, a bare identifier (outputs only).
+                # requirement) except ip_id, a bare identifier.
                 detail.append("\n".join(["**{}**{}".format(_ddi_md(address), where)] + [
                     "- {}: {}".format(label_text, _ddi_md(record.get(key)) or "-")
                     for label_text, key in [
@@ -290,26 +328,11 @@ def finalize(action=None, success=None, container=None, results=None, handle=Non
             else:
                 add_row(address, None, "failed (not dispatched)")
                 detail.append("**{}**\n- SOAR did not run the lookup; the reason is in this playbook run".format(_ddi_md(address)))
-    for part in invalid:
-        add_row(part, None, "invalid address")
     for address in skipped:
-        add_row(address, None, "skipped (over {} addresses)".format(DDI_MAX_ADDRESSES))
-
-    if not addresses:
-        output_status = "error"
-    elif counts["failed"]:
-        output_status = "failed"
-    elif counts["found"] == len(addresses) and not invalid and not skipped:
-        output_status = "success"
-    elif counts["found"]:
-        output_status = "partial"
-    else:
-        output_status = "not_found"
+        add_row(address, None, "skipped (over {} addresses, next run)".format(DDI_MAX_ADDRESSES))
 
     summary = "{} address(es): {} found, {} not found, {} failed".format(
         len(addresses), counts["found"], counts["not_found"], counts["failed"])
-    if invalid:
-        summary += ", {} invalid".format(len(invalid))
     if skipped:
         summary += ", {} skipped".format(len(skipped))
 
@@ -323,26 +346,19 @@ def finalize(action=None, success=None, container=None, results=None, handle=Non
         for block in detail:
             lines += [("", False), (block, False)]
 
-    title = "EfficientIP DDI Enrichment"
     parts = _ddi_note_parts(lines)
     for index, body in enumerate(parts, start=1):
         phantom.add_note(
             container=container,
             note_type="general",
-            title=title if len(parts) == 1 else "{} ({}/{})".format(title, index, len(parts)),
+            title=DDI_NOTE_TITLE if len(parts) == 1 else "{} ({}/{})".format(DDI_NOTE_TITLE, index, len(parts)),
             content=body,
             note_format="markdown",
         )
 
-    # on_finish() fills the VPE-generated output dict from this run data.
-    output = {"status": output_status}
-    for key in ["lookup", "ip_address", "hostname", "aliases", "subnet", "parent_subnet",
-                "space", "space_class", "mac_address", "ddi_class", "description", "ip_id"]:
-        output[key] = [row[key] for row in rows]
-    phantom.save_run_data(key="playbook_output", value=json.dumps(output))
+    phantom.debug("EfficientIP DDI enrichment complete: {}".format(summary))
 
-    phantom.debug("EfficientIP DDI enrichment complete: status={}, {}".format(output_status, summary))
-
+    ################################################################################
     ################################################################################
     ################################################################################
     ################################################################################
@@ -360,128 +376,26 @@ def finalize(action=None, success=None, container=None, results=None, handle=Non
 
 
 @phantom.playbook_block()
-def format_error(action=None, success=None, container=None, results=None, handle=None, filtered_artifacts=None, filtered_results=None, custom_function=None, loop_state_json=None, **kwargs):
-    phantom.debug("format_error() called")
-
-    template = """EfficientIP DDI enrichment could not run: no 'ip' input was provided."""
-
-    # parameter list for template variable replacement
-    parameters = []
-
-    ################################################################################
-    ## Custom Code Start
-    ################################################################################
-
-    # Write your custom code here...
-
-    ################################################################################
-    ## Custom Code End
-    ################################################################################
-
-    phantom.format(container=container, template=template, parameters=parameters, name="format_error", drop_none=True)
-
-    note_error(container=container)
-
-    return
-
-
-@phantom.playbook_block()
-def note_error(action=None, success=None, container=None, results=None, handle=None, filtered_artifacts=None, filtered_results=None, custom_function=None, loop_state_json=None, **kwargs):
-    phantom.debug("note_error() called")
-
-    ################################################################################
-    # Record the missing-input error on the container.
-    ################################################################################
-
-    format_error = phantom.get_format_data(name="format_error")
-
-    ################################################################################
-    ## Custom Code Start
-    ################################################################################
-    ################################################################################
-    ################################################################################
-    ################################################################################
-
-    error_note = phantom.get_format_data(name="format_error")
-
-    phantom.add_note(
-        container=container,
-        note_type="general",
-        title="EfficientIP DDI Enrichment - Error",
-        content=error_note,
-        note_format="markdown",
-    )
-
-    # on_finish() fills the VPE-generated output dict from this run data; the
-    # per-row outputs stay empty (normalised to null there).
-    phantom.save_run_data(key="playbook_output", value=json.dumps({"status": "error"}))
-
-    ################################################################################
-    ################################################################################
-    ################################################################################
-    ################################################################################
-    ## Custom Code End
-    ################################################################################
-
-    phantom.save_block_result(key="note_error__inputs:0:format_error:formatted_data", value=json.dumps(format_error))
-
-    phantom.save_block_result(key="note_error_called", value="True")
-
-    return
-
-
-@phantom.playbook_block()
 def on_finish(container, summary):
     phantom.debug("on_finish() called")
 
-    output = {
-        "status": [],
-        "lookup": [],
-        "ip_address": [],
-        "hostname": [],
-        "aliases": [],
-        "subnet": [],
-        "parent_subnet": [],
-        "space": [],
-        "space_class": [],
-        "mac_address": [],
-        "ddi_class": [],
-        "description": [],
-        "ip_id": [],
-    }
-
     ################################################################################
     ## Custom Code Start
     ################################################################################
-    ################################################################################
-    ################################################################################
-    ################################################################################
 
-    # Populate the generated `output` dict; do NOT call
-    # phantom.save_playbook_output_data() here. The VPE appends its own
-    # save_playbook_output_data(output=output) immediately after this block, so
-    # anything saved from inside the block is silently overwritten with the
-    # empty dict above on any GUI save -- the run still reports success and
-    # still passes validation, and every consumer just gets nulls.
-    # Every field except status is a list with one entry per note table row.
-    raw_output = phantom.get_run_data(key="playbook_output")
-    if raw_output:
-        output.update(json.loads(raw_output))
-    # The 8.6 VPE initialises every output above to [] (8.5 wrote None), so an
-    # output no block set is normalised to null here, whichever form a save wrote.
-    for key, value in output.items():
-        if value == []:
-            output[key] = None
-    if output["status"] is None:
-        output["status"] = "error"
+    # This function is called after all actions are completed.
+    # summary of all the action and/or all details of actions
+    # can be collected here.
 
-    ################################################################################
-    ################################################################################
-    ################################################################################
+    # summary_json = phantom.get_summary()
+    # if 'result' in summary_json:
+        # for action_result in summary_json['result']:
+            # if 'action_run_id' in action_result:
+                # action_results = phantom.get_action_results(action_run_id=action_result['action_run_id'], result_data=False, flatten=False)
+                # phantom.debug(action_results)
+
     ################################################################################
     ## Custom Code End
     ################################################################################
-
-    phantom.save_playbook_output_data(output=output)
 
     return

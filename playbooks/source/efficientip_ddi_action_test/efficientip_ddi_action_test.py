@@ -1,5 +1,5 @@
 """
-Diagnostic data playbook for the EfficientIP DDI connector. Runs get ip address and list subnets through the real action dispatch path and writes one PASS/FAIL note per action. Optional inputs ip and subnet_name pick values that exist in your IPAM; blank uses the lab mock&#39;s seed values. Test connectivity is not run here: use the asset's own Test Connectivity button.
+Diagnostic: runs get ip address and list subnets through the real action dispatch and writes one PASS/FAIL note per action. Optional inputs ip and subnet_name take values from your IPAM (blank: the lab mock seed values).
 """
 
 
@@ -122,7 +122,7 @@ def run_list_subnets(action=None, success=None, container=None, results=None, ha
     # phantom.debug('Action: {0} {1}'.format(action['name'], ('SUCCEEDED' if success else 'FAILED')))
 
     ################################################################################
-    # Run 'list subnets' on the subnet_name input (blank: the mock seed CORP_LAN-USERS).
+    # Run 'list subnets' on input subnet_name (blank: the mock seed CORP_LAN-USERS).
     ################################################################################
 
     playbook_input_subnet_name = phantom.collect2(container=container, datapath=["playbook_input:subnet_name"])

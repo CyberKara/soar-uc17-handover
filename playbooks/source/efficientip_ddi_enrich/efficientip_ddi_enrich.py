@@ -1,5 +1,5 @@
 """
-Automation playbook for EfficientIP DDI (SOLIDserver) IP address enrichment. Runs when an artifact is created on a container with this playbook&#39;s label, looks up every IP address those new artifacts carry (any field SOAR types as ip or ipv6) that no earlier enrichment note on the container already answers, and writes a note with a table (one row per record) and a per-IP detail section.
+Looks up the IP addresses of new artifacts in EfficientIP DDI (SOLIDserver) IPAM and writes one note with a table and a per-IP detail section. Each address is looked up once per container.
 """
 
 
@@ -301,8 +301,8 @@ def finalize(action=None, success=None, container=None, results=None, handle=Non
             for record in records:
                 add_row(address, record, label)
                 where = " (space {})".format(_ddi_md(record.get("site_name"))) if len(records) > 1 else ""
-                # Every field the appliance returns is in the note (user
-                # requirement) except ip_id, a bare identifier.
+                # Every field the appliance returns is in the note except ip_id,
+                # a bare identifier.
                 detail.append("\n".join(["**{}**{}".format(_ddi_md(address), where)] + [
                     "- {}: {}".format(label_text, _ddi_md(record.get(key)) or "-")
                     for label_text, key in [

@@ -212,7 +212,7 @@
                         "advanced": {
                             "join": [],
                             "customName": "run list subnets",
-                            "description": "Run 'list subnets' on the subnet_name input (blank: the mock seed CORP_LAN-USERS).",
+                            "description": "Run 'list subnets' on input subnet_name (blank: the mock seed CORP_LAN-USERS).",
                             "customNameId": 0
                         },
                         "connector": "EfficientIP DDI",
@@ -262,7 +262,7 @@
                 }
             },
             "notes": "",
-            "description": "Runs get ip address and list subnets through the real action dispatch path and writes one PASS/FAIL note per action. Optional inputs ip and subnet_name pick values that exist in your IPAM; blank uses the lab mock's seed values. Test connectivity is not run here: use the asset's own Test Connectivity button."
+            "description": "Diagnostic: runs get ip address and list subnets through the real action dispatch and writes one PASS/FAIL note per action. Optional inputs ip and subnet_name take values from your IPAM (blank: the lab mock seed values)."
         },
         "input_spec": [
             {
@@ -311,7 +311,7 @@
         "version": "8.6.0.530",
         "playbook_trigger": "artifact_created"
     },
-    "create_time": "2026-10-02T13:49:11.284180Z",
+    "create_time": "2026-10-10T20:16:40.114079Z",
     "draft_mode": false,
     "labels": [
         "events"

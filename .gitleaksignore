@@ -1,100 +1,13 @@
-# False positives: PEM header/footer MARKER STRINGS, not key material.
-#
-# The connector implements a _normalize_pem() helper that reflows a pasted
-# cert/key block to strict 64-column PEM. To do that it has to know the
-# header/footer delimiters, so it carries a literal list of them (block_types).
-# gitleaks' private-key rule is a literal string match with no code-semantics
-# awareness, so it fires on the delimiters themselves. No actual key bytes are
-# present anywhere in this package: verified by reading the surrounding function
-# (it is a tuple list of delimiter constants) and by scanning the whole export
-# for base64 runs longer than 60 chars (zero hits).
-#
-# Same pattern as cyberark_ccp's _normalize_pem() in the UC1 handover.
-#
-# NOTE: these fingerprints are line-pinned AND path-pinned, and they have drifted
-# on every connector change: 402 -> 490-492 (v1.0.6) -> 582-584 (v1.0.1) ->
-# 570-572 (v1.0.2, after _apply_client_limit and its call sites were removed) ->
-# 564-566 (2026-08-31, below). Re-check on every export, or the gate will miss a
-# real finding or fail the commit.
-#
-# 2026-08-31 — repinned for the SDK removal, and this time the PATHS moved too,
-# not just the line numbers:
-#   * The SDK app was deleted, so its three connectors/source/efficientip_ddi/
-#     src/app.py:128-130 fingerprints are gone entirely — they pointed at a file
-#     that no longer exists in this package.
-#   * The classic connector was renamed into the efficientip_ddi name, so
-#     connectors/source/efficientip_ddi_classic/efficientip_ddi_classic_connector.py
-#     became connectors/source/efficientip_ddi/efficientip_ddi_connector.py.
-# Both old paths were verified MISSING before this rewrite. Three fingerprints
-# remain, one per BEGIN-private-key delimiter line; the BEGIN-certificate line
-# above them does not trip the rule, which is why only three lines are pinned.
-# 2026-09-01 - repinned for connector v1.0.1 (GUI-visible request/response
-# diagnostics). Path unchanged; the new helper block pushed the delimiters
-# down: 564-566 -> 758-760. Verified by grep before repinning.
-# 2026-09-01 (later) - repinned for v1.0.8 (401 retry, retry policy helpers,
-# 400/403 handling, vendor-parity headers, host_addr filter, explicit
-# session + trust_env=False, curl-equivalent emitter). Path unchanged;
-# 758-760 -> 901-903 -> 910-912 -> 919-921 -> 1009-1011 -> 1075-1077. Verified by grep.
-# These fingerprints are line-pinned and drift on
-# EVERY connector change, so repin as a standard step of a refresh, not only
-# when a commit is blocked.
-# 2026-09-09 - repinned for v1.0.10 (user_agent default blanked, no other code
-# change; the line shift 1075-1077 -> 1106 is from v1.0.9's diagnostics/
-# debug_logging addition landing between refreshes). Also: this gitleaks
-# version reports the three-delimiter block as ONE finding (line 1106, the
-# first delimiter) rather than three, unlike the original 2026-09-01 pinning
-# -- verified by grep that all three delimiter lines are still present
-# (1106-1108) and gitleaks only flags the first.
-# 2026-09-24 - repinned for v1.0.11 (get ip pool + list aliases removed; the
-# two handlers and their dispatch entries came out above _normalize_pem, so
-# 1106 -> 1023). Verified by reading the function: block_types delimiter
-# constants only, and zero base64 runs over 60 chars anywhere in the package.
-# 2026-09-30 - repinned for v1.0.12 (backend-auth header names moved into the
-# consts module, hostaddr filter, rewritten Content-Type comment): 1023 -> 1029.
-# Verified by grep that the delimiter tuple is unchanged and still only the
-# marker strings. gitleaks itself is not installed where this edit was made, so
-# the pin has NOT been run through the scanner -- run it before the next push
-# to a public remote.
-# 2026-10-01 - repinned for v1.0.14 (IPv6 message, 401 split, debug guard,
-# docstrings): 1029 -> 1097. Scanned with this file moved aside (gitleaks 8.30.1):
-# the hit is the block_types delimiter tuple in _normalize_pem(), no key bytes,
-# and zero base64 runs over 60 chars anywhere in the package.
-# 2026-10-01 (later) - v1.0.15 simplification (401-hunt instrumentation removed): 1097 -> 495.
-# Same block_types delimiter tuple in _normalize_pem(); zero base64 runs over 60 chars.
-connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:495
+# gitleaks false positives in this package. The pins are path- and line-pinned:
+# re-derive them on every refresh by scanning with this file moved aside.
 
-# False positive: SOAR's own VPE-generated node bookkeeping field, not a
-# credential. Every decision/filter block's condition gets a
-# "comparisonKey": "comparison_key_<uuid-or-0>" identifier from the GUI/VPE
-# engine itself (same family as the documented "conditionKey" field in
-# vpe-block-reference.md) -- gitleaks' generic-api-key rule pattern-matches
-# on "key" + a high-entropy value with no code-semantics awareness, same
-# failure mode as the private-key rule above. Verified: every one of these
-# 7 hits in the exported playbook JSON is this exact field, nothing else on
-# the flagged lines. New in the 2026-09-09 refresh -- this playbook's JSON
-# picked up comparisonKey values from a VPE GUI save sometime after the
-# 2026-09-02 mirror refresh; the values are session-scoped node identifiers,
-# not secrets, and are meaningless outside the playbook graph that generated
-# them. Re-check line numbers on every future export -- also a new category
-# to watch for even if line numbers don't shift, since these regenerate on
-# every VPE save with new UUIDs.
-# 2026-09-24 - repinned: 7 -> 3. The check_ip_found decision block was deleted
-# with the list_aliases chain, taking its comparisonKey values with it. The
-# three left (138, 155: check_input's; 188: the get_ip_address action block's
-# unused loop-condition placeholder "comparison_key_0") were each verified as a
-# "comparisonKey" line with nothing else on it.
-# 2026-10-01 - user VPE save shifted check_input's third key 188 -> 189.
-# 2026-10-02 - repinned 138/155/189 -> 131/148/182. The multi-IP rebuild pushed in
-# 99ac44b moved them and was not repinned then; verified in 99ac44b's own copy and
-# in this one: each line is a "comparisonKey" field and nothing else.
-# 2026-10-05 - enrich became an automation playbook (2026-10-02): the check_input
-# decision block and its two comparisonKeys are gone, 3 -> 1 pin. The one left is
-# the get_ip_address action block's unused loop-condition placeholder
-# "comparison_key_0" (verified: a comparisonKey field and nothing else on the line).
+# private-key: the PEM header/footer marker strings in _normalize_pem()'s
+# delimiter tuple list, not key material (no base64 run over 60 characters
+# anywhere in the package). gitleaks reports the delimiter block as one finding.
+connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:494
+
+# generic-api-key: the VPE's own comparisonKey node field (the placeholder
+# comparison_key_0 of an unused loop condition on action blocks), not a credential.
 playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:118
-# 2026-10-01 - efficientip_ddi_action_test was rebuilt in the 8.6 VPE shape, so
-# its three action blocks now carry the same unused loop-condition
-# comparisonKey placeholder (key suffix 0; verified: nothing else on these lines).
-# 2026-10-01 (later) - test connectivity branch removed (user): 3 -> 2 pins.
 playbooks/source/efficientip_ddi_action_test/efficientip_ddi_action_test.json:generic-api-key:106
 playbooks/source/efficientip_ddi_action_test/efficientip_ddi_action_test.json:generic-api-key:197

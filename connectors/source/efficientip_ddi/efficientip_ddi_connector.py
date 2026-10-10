@@ -137,9 +137,8 @@ class EfficientipDdiConnector(BaseConnector):
                 )
             return action_result.set_status(phantom.APP_ERROR, message)
 
-        # Raw pass-through: every key SOLIDserver returns is forwarded as-is
-        # (curated field names were wrong several times). One data item per
-        # record, so raising "limit" never silently drops rows.
+        # Raw pass-through: every key SOLIDserver returns is forwarded as-is,
+        # one data item per record, so raising "limit" never drops rows.
         for record in records:
             class_params = self._parse_class_parameters(record.get("ip_class_parameters", ""))
             record["description"] = class_params.get("description", "")
@@ -471,7 +470,7 @@ class EfficientipDdiConnector(BaseConnector):
         if len(supplied) > 1:
             action_result.set_status(
                 phantom.APP_ERROR,
-                "Set exactly ONE filter, got {}. This service is only confirmed to accept "
+                "Set at most ONE filter, got {}. This service is only confirmed to accept "
                 "a single WHERE condition; combining filters is not supported.".format(
                     ", ".join(name for name, _ in supplied)
                 ),

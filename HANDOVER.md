@@ -1,6 +1,6 @@
 # UC17 — EfficientIP DDI Enrichment — Air-Gapped Handover Package
 
-Generated 2026-10-05 12:22 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
+Generated 2026-10-10 20:17 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
 
 This package is self-contained — everything needed to deploy this use case by hand
 in an environment with no network access back to this repo or to `soar8`.
@@ -11,7 +11,7 @@ in an environment with no network access back to this repo or to `soar8`.
 
 | Path | What |
 |------|------|
-| `connectors/` | Connector app package(s): efficientip_ddi-v1.0.16.tgz |
+| `connectors/` | Connector app package(s): efficientip_ddi-v1.0.17.tgz |
 | `connectors/source/` | Same connector(s), extracted — for reading, not for import |
 | `playbooks/*.tgz` (PBs) | efficientip_ddi_enrich, efficientip_ddi_action_test |
 | `playbooks/source/` | Same CFs/playbooks, extracted — for reading, not for import |
@@ -25,6 +25,8 @@ These apply only if this app is already installed on the target from a
 previous package. On a completely fresh target, skip to Install order.
 
 - **Which of these applies depends on what is already installed — check the Apps list first.** Open Apps and search for `EfficientIP`. If you see **exactly one** app (named `efficientip_ddi` / `EfficientIP DDI`), you installed the 2026-08-31 package or later: this one is a **normal in-place upgrade**. Install it over the existing app — same internal identifier — and your existing asset keeps working with every credential intact. **Do not delete anything and do not re-enter any credential.** If instead you see **two** apps (an `efficientip_ddi` and an `EfficientIP DDI (Classic)`), you are still on a package older than 2026-08-31, and the note below applies to you instead.
+
+- **Connector 1.0.17 and shorter texts (2026-10-10).** Install connector v1.0.17 over the existing EfficientIP DDI app (same identifier: the asset keeps its credentials). Its texts are shorter, and `list subnets` now declares its filter parameters (`subnet_name`, `subnet_id`, `parent_subnet_name`, `site_name`) in place of a `name` that no result carried; nothing else changes. Re-import both playbooks: their descriptions, block notes and comments are shorter, their behaviour is unchanged. After re-importing `efficientip_ddi_enrich`, point its action block at your asset again and save, set its label(s) and its **Run As** user, and **activate** it. The implementation plan in `docs/` now describes the current design only, with a Setup Guide.
 
 - **`efficientip_ddi_enrich` is now an automation playbook (2026-10-02).** It no longer has an `ip` input or any output: it runs by itself when an artifact is created on a container with its label, and looks up the IP addresses of the new artifacts (see Verification). Re-import it so it replaces the earlier version, point its action block at your asset again and save, set its label(s) to the label of the containers to enrich (`events` as shipped), set its **Run As** user and **activate** it. A playbook of yours that launched it with an `ip` input or read its outputs must be changed: it no longer takes them. The connector is still v1.0.16 (nothing to install).
 

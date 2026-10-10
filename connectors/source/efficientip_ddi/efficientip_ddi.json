@@ -1,7 +1,7 @@
 {
     "appid": "33986f6c-2005-4c3a-aa8b-d7a83caa76d0",
     "name": "EfficientIP DDI",
-    "description": "Analyst-driven IPAM enrichment against an EfficientIP SOLIDserver DDI backend reached through an APIM gateway. Provides IP address lookup and subnet queries over mTLS with Basic APIM credentials and forwarded SOLIDserver credentials.",
+    "description": "IP address and subnet lookups in EfficientIP SOLIDserver DDI (IPAM) through an APIM gateway, over mTLS with APIM app credentials and forwarded SOLIDserver credentials.",
     "type": "ddi",
     "product_vendor": "EfficientIP",
     "product_name": "SOLIDserver",
@@ -10,7 +10,7 @@
     "logo_dark": "logo_dark.svg",
     "publisher": "Ted",
     "license": "Copyright (c) 2026",
-    "app_version": "1.0.16",
+    "app_version": "1.0.17",
     "utctime_updated": "2026-10-01T14:26:14.765883Z",
     "package_name": "phantom_efficientip_ddi",
     "main_module": "efficientip_ddi_connector.py",
@@ -22,7 +22,7 @@
     },
     "configuration": {
         "base_url": {
-            "description": "Base URL of the APIM gateway fronting SOLIDserver, including any APIM path prefix that comes before /rest, e.g. https://apim.internal.example/some/prefix",
+            "description": "Base URL of the APIM gateway, including any path prefix before /rest, e.g. https://apim.internal.example/some/prefix",
             "data_type": "string",
             "required": true,
             "order": 0
@@ -95,7 +95,7 @@
             "order": 11
         },
         "debug_logging": {
-            "description": "Add one line per HTTP call to the action's progress output: URL (no credentials), status, X-Backside-Transport, APIm-Debug-Trans-Id, start of the body. Off by default.",
+            "description": "One progress line per HTTP call: URL (no credentials), status, X-Backside-Transport, APIm-Debug-Trans-Id, start of the body. Off by default.",
             "data_type": "boolean",
             "required": false,
             "default": false,
@@ -106,7 +106,7 @@
         {
             "action": "test connectivity",
             "identifier": "test_connectivity",
-            "description": "Validate the asset configuration for connectivity using supplied configuration (GET /rest/ip_block_subnet_list, bare)",
+            "description": "Validate the asset configuration with a bounded subnet list (GET /rest/ip_block_subnet_list?limit=1)",
             "type": "test",
             "read_only": true,
             "parameters": {},
@@ -116,7 +116,7 @@
         {
             "action": "get ip address",
             "identifier": "get_ip_address",
-            "description": "Look up an IP address in SOLIDserver's IPAM (subnet, space, status, hostname, MAC, class) for enrichment",
+            "description": "Look up an IP address in SOLIDserver's IPAM (hostname, aliases, subnet, space, MAC, class)",
             "type": "investigate",
             "read_only": true,
             "parameters": {
@@ -131,7 +131,7 @@
                     ]
                 },
                 "limit": {
-                    "description": "Maximum number of records to return (default 1). Must be a positive whole number -- an unbounded call times out server-side on the real APIM, so a limit always goes on the wire.",
+                    "description": "Maximum number of records to return (default 1, a positive whole number). A limit is always sent: an unbounded call times out on the APIM.",
                     "data_type": "numeric",
                     "required": false,
                     "default": 1,
@@ -242,12 +242,12 @@
         {
             "action": "list subnets",
             "identifier": "list_subnets",
-            "description": "Look up subnets in SOLIDserver's IPAM (parent, space, address range, size, class) for enrichment. Only 'limit' need be set: with no filter this lists subnets bare, the same shape test connectivity uses. Optionally set AT MOST ONE filter: subnet_name, subnet_id, parent_subnet_name (lists the subnets under a parent) or site_name (lists the subnets in a space). Raise 'limit' above the default of 1 to see more than one row, which the parent/site filters and the unfiltered call usually need. Output field names follow ip_address_list's confirmed subnet_* conventions but ip_block_subnet_list's own field set is not independently vendor-confirmed -- check raw_json if a named field comes back empty.",
+            "description": "List subnets in SOLIDserver's IPAM, filtered by at most one of subnet_name, subnet_id, parent_subnet_name or site_name (none lists them unfiltered). Raise 'limit' to see more than one row.",
             "type": "investigate",
             "read_only": true,
             "parameters": {
                 "subnet_name": {
-                    "description": "Filter by subnet NAME -- the human label the subnet carries in IPAM (e.g. 'Corporate-LAN'), not its CIDR. To find a subnet by address you need the range columns, which this action does not yet expose.",
+                    "description": "Filter by subnet NAME, the label the subnet carries in IPAM (e.g. 'Corporate-LAN'), not its CIDR",
                     "data_type": "string",
                     "required": false,
                     "order": 0
@@ -265,13 +265,13 @@
                     "order": 2
                 },
                 "site_name": {
-                    "description": "Filter by space/site name -- lists the subnets belonging to it. Filters on the API's 'parent_site_name' column.",
+                    "description": "Filter by space/site name (the API's 'parent_site_name' column): the subnets in that space",
                     "data_type": "string",
                     "required": false,
                     "order": 3
                 },
                 "limit": {
-                    "description": "Maximum number of records to return (default 1). Must be a positive whole number -- an unbounded call times out server-side on the real APIM, so a limit always goes on the wire.",
+                    "description": "Maximum number of records to return (default 1, a positive whole number). A limit is always sent: an unbounded call times out on the APIM.",
                     "data_type": "numeric",
                     "required": false,
                     "default": 1,
@@ -280,7 +280,19 @@
             },
             "output": [
                 {
-                    "data_path": "action_result.parameter.name",
+                    "data_path": "action_result.parameter.subnet_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.subnet_id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.parent_subnet_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.site_name",
                     "data_type": "string"
                 },
                 {

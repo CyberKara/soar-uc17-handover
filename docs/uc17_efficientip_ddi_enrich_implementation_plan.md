@@ -18,8 +18,6 @@ not shipped in the handover. Open work: the Splunk project's `docs/next-steps.md
 | Playbook | Type | Label | Active | Role |
 |---|---|---|---|---|
 | `efficientip_ddi_enrich` | automation, `artifact_created` | `events` | **yes** | Looks up the IPs of new artifacts, writes the enrichment note |
-| `efficientip_ddi_action_test` | data | `events` | — | Runs `get ip address` and `list subnets`, one PASS/FAIL note each |
-| `efficientip_ddi_enrich_demo` | data | `*` | — | Lab only, not shipped: prompts for an IP, looks it up, writes a note |
 
 **Connector `efficientip_ddi`** (classic `BaseConnector`; the permanent FR-01 exemption, because
 the App Debugger cannot run SDK-app actions and it is the airgapped operator's only hands-on test).
@@ -67,28 +65,6 @@ outputs.
     absence.
   - Above 19,000 characters the note splits into `EfficientIP DDI Enrichment (k/N)` parts, never
     inside a block, with the table header repeated (the appliance cuts a note at about 22,000).
-
-### `efficientip_ddi_action_test`
-
-Two branches from start, each an action then a code block that writes the note:
-
-- `run_get_ip_address` on input `ip` (blank: `10.20.30.40`, the lab mock's seed record) →
-  `note_get_ip_address`;
-- `run_list_subnets` on input `subnet_name` (blank: `CORP_LAN-USERS`, the mock's seed subnet) →
-  `note_list_subnets`.
-
-Note title `efficientip_ddi action test - <action> - PASS|FAIL`; body: the mark, the address or
-subnet name, the action's message. No action result (SOAR refused the action) is a FAIL. Outputs:
-`get_ip_address` and `list_subnets` (`PASS`/`FAIL`), `status` (`pass` when both passed, else
-`fail`). It does not run `test connectivity`: the asset's own Test Connectivity button does that.
-
-### `efficientip_ddi_enrich_demo` (lab only)
-
-A lab copy of the user's appliance test playbook; the handover registry lists the other two
-playbooks only, so an export never ships it. All native blocks: `prompt_ip_lookup` (the launching
-user, one required answer, 30 minutes) → `get_ip_address` (bound to the answer) →
-`check_lookup_status` (`status == success`) → a success note with the record's fields, else a
-failure note with the IP entered, the status and the connector's message.
 
 ## Data model and API facts
 
@@ -145,8 +121,8 @@ more.
 
 1. **Connector:** Apps > Install App with the `efficientip_ddi` package. Over an existing install it
    upgrades in place and the asset keeps its credentials.
-2. **Asset:** the playbooks ship pointed at `efficientip_ddi mock`. Keep that name, or re-point the
-   action blocks of both playbooks to your asset in the VPE and save.
+2. **Asset:** the playbook ships pointed at `efficientip_ddi mock`. Keep that name, or re-point its
+   action block to your asset in the VPE and save.
 
    | Field | Value |
    |---|---|
@@ -160,12 +136,11 @@ more.
 
    Enter every credential by hand: password fields do not cross the air gap as usable values. Then
    use the asset's Test Connectivity button.
-3. **Import** `efficientip_ddi_enrich` and `efficientip_ddi_action_test`.
+3. **Import** `efficientip_ddi_enrich`.
 4. **`efficientip_ddi_enrich`:** set its label(s) to the label of the containers to enrich
    (`events` as shipped), leave **Run As** at the default (the automation user, which reads the
    container's notes over REST) and **activate** it. A re-import replaces the playbook, so redo this
    step after every re-import.
-5. `efficientip_ddi_action_test` stays a data playbook: run it from a container with Run Playbook.
 
 ## Verification
 
@@ -173,10 +148,9 @@ more.
   (`host01.corp.local`, alias `fin-ws01.corp.local`) and `10.20.30.99`; `192.0.2.1` is not found.
   `tools/uc17_verify.sh` (`soar-playbooks`) checks the mock, one `get ip address` through SOAR, the
   enrich playbook on a fresh `events` container (expect one note: `.40` found, `192.0.2.1` not
-  found, `deviceCustomString1` ignored) and the action-test playbook (two PASS notes).
-- **Target:** run `efficientip_ddi_action_test` with an `ip` and a `subnet_name` from your IPAM
-  (expect two PASS; a `not found` still proves the call reached SOLIDserver). Then, on a test
-  container with the enrich label: one artifact with a known address in `sourceAddress` and an
+  found, `deviceCustomString1` ignored).
+- **Target:** the asset's Test Connectivity button, then on a test container with the enrich
+  label: one artifact with a known address in `sourceAddress` and an
   unused one in `destinationAddress` (expect one note, `found` and `not found`), then a second
   artifact with the same two (expect no new note).
 - **Diagnostics:** `uc17_airgapped_probe.sh` (read-only GETs, credentials from the environment)

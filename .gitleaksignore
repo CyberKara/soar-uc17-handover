@@ -9,5 +9,3 @@ connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:494
 # generic-api-key: the VPE's own comparisonKey node field (the placeholder
 # comparison_key_0 of an unused loop condition on action blocks), not a credential.
 playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:118
-playbooks/source/efficientip_ddi_action_test/efficientip_ddi_action_test.json:generic-api-key:106
-playbooks/source/efficientip_ddi_action_test/efficientip_ddi_action_test.json:generic-api-key:197

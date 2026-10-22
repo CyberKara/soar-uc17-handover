@@ -1,6 +1,6 @@
 # UC17 — EfficientIP DDI Enrichment — Air-Gapped Handover Package
 
-Generated 2026-10-10 20:17 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
+Generated 2026-10-22 20:15 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
 
 This package is self-contained — everything needed to deploy this use case by hand
 in an environment with no network access back to this repo or to `soar8`.
@@ -13,8 +13,8 @@ in an environment with no network access back to this repo or to `soar8`.
 |------|------|
 | `connectors/` | Connector app package(s): efficientip_ddi-v1.0.17.tgz |
 | `connectors/source/` | Same connector(s), extracted — for reading, not for import |
-| `playbooks/*.tgz` (PBs) | efficientip_ddi_enrich, efficientip_ddi_action_test |
-| `playbooks/source/` | Same CFs/playbooks, extracted — for reading, not for import |
+| `playbooks/` | Playbook package(s): efficientip_ddi_enrich |
+| `playbooks/source/` | Same playbook(s), extracted — for reading, not for import |
 | `assets/*.json` | Asset config templates (credentials redacted — see below) |
 | `diagnostics/` | Scripts you run on the target to answer questions about it — see below |
 | `docs/` | Implementation plan doc, for full design context |
@@ -25,6 +25,8 @@ These apply only if this app is already installed on the target from a
 previous package. On a completely fresh target, skip to Install order.
 
 - **Which of these applies depends on what is already installed — check the Apps list first.** Open Apps and search for `EfficientIP`. If you see **exactly one** app (named `efficientip_ddi` / `EfficientIP DDI`), you installed the 2026-08-31 package or later: this one is a **normal in-place upgrade**. Install it over the existing app — same internal identifier — and your existing asset keeps working with every credential intact. **Do not delete anything and do not re-enter any credential.** If instead you see **two** apps (an `efficientip_ddi` and an `EfficientIP DDI (Classic)`), you are still on a package older than 2026-08-31, and the note below applies to you instead.
+
+- **One playbook (2026-10-15).** `efficientip_ddi_action_test` is no longer shipped: if you imported it, deactivate it, then delete it, and use the asset's Test Connectivity button instead (Verification step 1). Where an older note below says to re-import both playbooks, re-import `efficientip_ddi_enrich` only. Re-importing it from this package is optional: only its layout changed (the shape the VPE saves), not its behaviour. If you do, point its action block at your asset again and save, set its label(s) and **Run As** user, and **activate** it. The connector is still v1.0.17 (nothing to install).
 
 - **Connector 1.0.17 and shorter texts (2026-10-10).** Install connector v1.0.17 over the existing EfficientIP DDI app (same identifier: the asset keeps its credentials). Its texts are shorter, and `list subnets` now declares its filter parameters (`subnet_name`, `subnet_id`, `parent_subnet_name`, `site_name`) in place of a `name` that no result carried; nothing else changes. Re-import both playbooks: their descriptions, block notes and comments are shorter, their behaviour is unchanged. After re-importing `efficientip_ddi_enrich`, point its action block at your asset again and save, set its label(s) and its **Run As** user, and **activate** it. The implementation plan in `docs/` now describes the current design only, with a Setup Guide.
 
@@ -70,7 +72,7 @@ previous package. On a completely fresh target, skip to Install order.
 
    | Asset name | App | Used by | Template |
    |---|---|---|---|
-   | `efficientip_ddi mock` | EfficientIP DDI | `efficientip_ddi_action_test`, `efficientip_ddi_enrich` | `assets/efficientip_ddi_mock.json` |
+   | `efficientip_ddi mock` | EfficientIP DDI | `efficientip_ddi_enrich` | `assets/efficientip_ddi_mock.json` |
 
 3. **Import the playbooks** from `playbooks/*.tgz`, via *Import Playbook* on the Playbooks
    page of the target SOAR GUI. (`playbooks/source/` is the same code extracted for reading — don't
@@ -80,7 +82,7 @@ previous package. On a completely fresh target, skip to Install order.
 
 ## Verification
 
-1. **Run `efficientip_ddi_action_test` first, with values from your IPAM.** Open any container, then Playbooks > Run Playbook and pick it. It asks for two optional inputs: `ip`, an address that exists in your IPAM, and `subnet_name`, the NAME of one of your subnets (a label, not a CIDR). Left blank they fall back to the lab mock's values (`10.20.30.40`, `CORP_LAN-USERS`), which your IPAM does not hold, so those two checks then FAIL with "not found". It writes two notes, one per connector action (`get ip address`, `list subnets`), each PASS or FAIL with the action's own message. Expect two PASS. It does not run `test connectivity`: use the asset's own Test Connectivity button for that. A "not found" still proves the call reached SOLIDserver and back. An HTTP 401, TLS or BAD REQUEST message does not.
+1. **Test Connectivity** on the EfficientIP DDI asset. It lists one subnet (`ip_block_subnet_list`), so a pass proves `base_url`, the credentials and the client certificate. An HTTP 401 is explained in step 3.
 
 2. **Then check `efficientip_ddi_enrich`, which now runs by itself.** It is an automation playbook: once active, it runs whenever an artifact is created on a container whose label is in its label list (`events` as shipped; set your own label(s) in the playbook settings). It looks up every value of an artifact field SOAR types as an IP address (`sourceAddress`, `destinationAddress`, ...), at most 50 per run, and writes an `EfficientIP DDI Enrichment` note: a summary line, a table with one row per IPAM record (IP, Hostname, Aliases, Subnet, Parent subnet, Lookup), then a **Per-IP detail** section: one block per record, the IP then one line each for space, space class, MAC, class, description, IP in hex and class parameters (`-` when empty); a failed lookup's block gives its message. The Lookup column reads `found`, `not found`, `failed` or `skipped`. An address held in several spaces gets one row per space (up to 5). An address a note on the container already answered (`found` or `not found`) is not looked up again; a `failed` or `skipped` one is, on the next artifact. Please try it on a test container with your label: add one artifact with an address in your IPAM in `sourceAddress` and an unused one in `destinationAddress` (expect one note: `found`, `not found`), then a second artifact with the same two addresses (expect no new note), and, if your site has any, an IPv6 address that exists in your IPAM. Whether this SOLIDserver service returns IPv6 records is not yet known, so report what you get.
 
@@ -96,9 +98,8 @@ the environment that built this package.
 
 - **`uc17_airgapped_probe.sh`** — Answers the API-shape questions only the real appliance can answer: real field names, whether a filter is honoured, what 'not found' returns.
 
-All of them are read-only (every call is a GET), they read credentials from
-environment variables, and they print none. Set the variables once and both
-will pick them up:
+Each script is read-only (every call is a GET), reads its credentials from
+environment variables and prints none. Set the variables first:
 
 ```bash
 sudo su - phantom

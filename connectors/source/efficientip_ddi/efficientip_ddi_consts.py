@@ -15,7 +15,7 @@ DEFAULT_LIMIT = 1  # fallback when the optional "limit" action param is omitted
 #   403  BAD REQUEST from the APIM gateway -- *not* "forbidden"
 #
 # Read as standard HTTP, 403 sends an operator hunting credentials, the wrong
-# half of the stack. 400 and 403 are deterministic and never retried.
+# half of the stack. No status is retried: each request is sent once.
 #
 # WHERE is SQL: a string value must be single-quoted (unquoted it returns 400,
 # errno 50028 / sql_error 7); an integer needs no quotes (ip_id=1697182). The
@@ -25,29 +25,13 @@ HTTP_STATUS_UNAUTHORIZED = 401
 # Both mean bad request; see the note above.
 BAD_REQUEST_STATUS = frozenset({400, 403})
 
-# Only 401 is retried: the appliance returns it for a request that succeeds
-# unchanged moments later. The connector holds no per-call state (headers are
-# rebuilt from config on every call, no session cookie or token), so a retry
-# sends identical bytes.
-RETRYABLE_STATUS = frozenset({HTTP_STATUS_UNAUTHORIZED})
-
-# A 401 is NOT retried when the gateway reports it reached the backend
-# (X-Backside-Transport "OK OK"): that 401 is SOLIDserver's own credential
-# verdict. "FAIL FAIL" means the APIM's backend leg failed and the gateway
-# answered 401 itself.
+# Tells a 401's producer apart: "OK OK" means the gateway reached SOLIDserver,
+# so the 401 is its credential verdict; "FAIL FAIL" means the APIM's backend
+# leg failed and the gateway answered 401 itself: check the mTLS client
+# certificate first.
 BACKSIDE_TRANSPORT_HEADER = "X-Backside-Transport"
 # IBM API Connect's per-call id; the APIM administrator traces a call by it.
 APIM_TRANS_ID_HEADER = "APIm-Debug-Trans-Id"
-
-# Total attempts, including the first. Operator-tunable per asset: at the
-# measured ~33% transient failure rate, 3 attempts leave ~3.6% failing.
-DEFAULT_RETRY_COUNT = 3
-MAX_RETRY_COUNT = 10
-
-# Base seconds between attempts; the wait grows linearly (1x, 2x, 3x ...).
-# Rapid repeated auth failures are what trips gateway lockout and quota policies.
-DEFAULT_RETRY_BACKOFF = 2.0
-MAX_RETRY_BACKOFF = 30.0
 
 # Backend (SOLIDserver) credential headers, each carrying base64(value): the
 # names the APIM reads. Sent as X-DDI-*, every call answers HTTP 401 "The

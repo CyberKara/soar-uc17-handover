@@ -1,6 +1,6 @@
 # UC17 — EfficientIP DDI Enrichment — Air-Gapped Handover Package
 
-Generated 2026-10-22 20:15 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
+Generated 2026-10-23 18:11 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
 
 This package is self-contained — everything needed to deploy this use case by hand
 in an environment with no network access back to this repo or to `soar8`.
@@ -11,7 +11,7 @@ in an environment with no network access back to this repo or to `soar8`.
 
 | Path | What |
 |------|------|
-| `connectors/` | Connector app package(s): efficientip_ddi-v1.0.17.tgz |
+| `connectors/` | Connector app package(s): efficientip_ddi-v1.0.18.tgz |
 | `connectors/source/` | Same connector(s), extracted — for reading, not for import |
 | `playbooks/` | Playbook package(s): efficientip_ddi_enrich |
 | `playbooks/source/` | Same playbook(s), extracted — for reading, not for import |
@@ -26,7 +26,9 @@ previous package. On a completely fresh target, skip to Install order.
 
 - **Which of these applies depends on what is already installed — check the Apps list first.** Open Apps and search for `EfficientIP`. If you see **exactly one** app (named `efficientip_ddi` / `EfficientIP DDI`), you installed the 2026-08-31 package or later: this one is a **normal in-place upgrade**. Install it over the existing app — same internal identifier — and your existing asset keeps working with every credential intact. **Do not delete anything and do not re-enter any credential.** If instead you see **two** apps (an `efficientip_ddi` and an `EfficientIP DDI (Classic)`), you are still on a package older than 2026-08-31, and the note below applies to you instead.
 
-- **One playbook (2026-10-15).** `efficientip_ddi_action_test` is no longer shipped: if you imported it, deactivate it, then delete it, and use the asset's Test Connectivity button instead (Verification step 1). Where an older note below says to re-import both playbooks, re-import `efficientip_ddi_enrich` only. Re-importing it from this package is optional: only its layout changed (the shape the VPE saves), not its behaviour. If you do, point its action block at your asset again and save, set its label(s) and **Run As** user, and **activate** it. The connector is still v1.0.17 (nothing to install).
+- **Connector 1.0.18: no retry on HTTP 401 (2026-10-23).** Install connector v1.0.18 over the existing EfficientIP DDI app (same identifier: the asset keeps its credentials). Each request is now sent once. The asset fields `retry_count` and `retry_backoff` are gone: SOAR removes them from the asset during the upgrade, so there is nothing to change on it. A 401 carrying `X-Backside-Transport: FAIL FAIL` now points at the mTLS client certificate first. No playbook to re-import.
+
+- **One playbook (2026-10-15).** `efficientip_ddi_action_test` is no longer shipped: if you imported it, deactivate it, then delete it, and use the asset's Test Connectivity button instead (Verification step 1). Where an older note below says to re-import both playbooks, re-import `efficientip_ddi_enrich` only. Re-importing it from this package is optional: only its layout changed (the shape the VPE saves), not its behaviour. If you do, point its action block at your asset again and save, set its label(s) and **Run As** user, and **activate** it.
 
 - **Connector 1.0.17 and shorter texts (2026-10-10).** Install connector v1.0.17 over the existing EfficientIP DDI app (same identifier: the asset keeps its credentials). Its texts are shorter, and `list subnets` now declares its filter parameters (`subnet_name`, `subnet_id`, `parent_subnet_name`, `site_name`) in place of a `name` that no result carried; nothing else changes. Re-import both playbooks: their descriptions, block notes and comments are shorter, their behaviour is unchanged. After re-importing `efficientip_ddi_enrich`, point its action block at your asset again and save, set its label(s) and its **Run As** user, and **activate** it. The implementation plan in `docs/` now describes the current design only, with a Setup Guide.
 
@@ -41,8 +43,6 @@ previous package. On a completely fresh target, skip to Install order.
 - **This package removes two connector actions: `get ip pool` and `list aliases`** (connector v1.0.11). The connector now calls only two SOLIDserver services: `ip_address_list` (`get ip address`) and `ip_block_subnet_list` (`list subnets`, `test connectivity`). After upgrading, any playbook that still calls a removed action fails at that step. That includes the `efficientip_ddi_enrich` and `efficientip_ddi_action_test` playbooks from any earlier package, so re-import both from this package so they replace the earlier versions. If you built playbooks of your own on `get ip pool` or `list aliases`, rework them before upgrading. Your asset and its credentials are not affected. The new `efficientip_ddi_enrich` also fixes its summary note: with packages from 2026-08-31 to 2026-09-09, hostname, subnet, space, MAC address and class came back empty. They are filled in now.
 
 - **Only if the Apps list showed TWO apps.** Up to 2026-08-31 this use case shipped two: `efficientip_ddi` (SDK-based) and `EfficientIP DDI (Classic)`. The SDK app has been withdrawn, because its actions cannot be run from the connector's edit/view page in the SOAR web interface — a limitation of the platform, not of the app. The classic app is now the only one, and it has taken the `efficientip_ddi` name under a new internal identifier, so SOAR installs it as a brand-new app rather than upgrading anything. After installing: delete BOTH old apps and their assets through the web interface (Apps > the app > Delete), then create a fresh asset for the new app from the template in this package. Re-enter every credential by hand; secret fields do not carry across in the template.
-
-- **Two new asset fields, both optional.** `retry_count` (default 3) and `retry_backoff` (default 2 seconds) control how a request answered with HTTP 401 is retried. They have working defaults, so an in-place upgrade needs no action: leave them alone unless you want to tune them. Set `retry_count` to 1 to disable retrying entirely.
 
 ## Install order
 

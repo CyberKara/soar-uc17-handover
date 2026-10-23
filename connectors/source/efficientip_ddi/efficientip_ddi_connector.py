@@ -19,7 +19,6 @@ import ipaddress
 import json
 import os
 import tempfile
-import time
 from urllib.parse import parse_qsl
 
 import requests
@@ -35,16 +34,11 @@ from efficientip_ddi_consts import (
     DDI_PASSWORD_HEADER,
     DDI_USERNAME_HEADER,
     DEFAULT_LIMIT,
-    DEFAULT_RETRY_BACKOFF,
-    DEFAULT_RETRY_COUNT,
     DEFAULT_TIMEOUT,
     HTTP_STATUS_UNAUTHORIZED,
     IP_ADDRESS_LIST_PATH,
     IP_BLOCK_SUBNET_LIST_PATH,
     LIST_SUBNETS_FILTERS,
-    MAX_RETRY_BACKOFF,
-    MAX_RETRY_COUNT,
-    RETRYABLE_STATUS,
 )
 
 # Characters of a response body shown in the debug line.
@@ -200,10 +194,7 @@ class EfficientipDdiConnector(BaseConnector):
     def _make_rest_call(self, path, params, action_result):
         """GET an APIM service with mTLS + 3-layer auth; returns (status, data).
 
-        An HTTP 401 is retried (linear backoff, asset-configurable) unless the
-        gateway reports it reached SOLIDserver: the APIM's backend leg fails on
-        about one call in three and answers 401 itself (X-Backside-Transport:
-        FAIL FAIL), and a retry re-picks a backend member.
+        Sent once: retrying a 401 only repeats a failed authentication.
         """
         config = self.get_config()
         url = "{}{}".format(self._base_url, path)
@@ -231,26 +222,13 @@ class EfficientipDdiConnector(BaseConnector):
             session.trust_env = False
             session.proxies = {}
 
-            attempts, backoff = self._retry_plan()
-            for attempt in range(1, attempts + 1):
-                response = session.request(
-                    "GET", url, headers=headers, params=params,
-                    cert=(cert_path, key_path), verify=verify, timeout=DEFAULT_TIMEOUT,
-                )
-                self._debug_line(response)
+            response = session.request(
+                "GET", url, headers=headers, params=params,
+                cert=(cert_path, key_path), verify=verify, timeout=DEFAULT_TIMEOUT,
+            )
+            self._debug_line(response)
 
-                if response.status_code not in RETRYABLE_STATUS or self._backend_leg_ok(response):
-                    break
-                if attempt < attempts and backoff:
-                    time.sleep(backoff * attempt)
-
-            if response.ok and attempt > 1:
-                # Visible on purpose: the operator reports the gateway fault upstream.
-                self.save_progress("Succeeded on attempt {} of {} (earlier attempt(s) returned HTTP {})".format(
-                    attempt, attempts, HTTP_STATUS_UNAUTHORIZED,
-                ))
-
-            return self._process_response(response, action_result, attempt)
+            return self._process_response(response, action_result)
 
         except requests.exceptions.SSLError as e:
             return action_result.set_status(phantom.APP_ERROR, "TLS/mTLS error connecting to APIM: {}".format(e)), None
@@ -263,7 +241,7 @@ class EfficientipDdiConnector(BaseConnector):
                 session.close()
             self._cleanup_temp_files(cert_path, key_path, ca_path)
 
-    def _process_response(self, response, action_result, attempts=1):
+    def _process_response(self, response, action_result):
         content_type = response.headers.get("Content-Type", "")
 
         if "json" in content_type:
@@ -299,10 +277,8 @@ class EfficientipDdiConnector(BaseConnector):
                 "credentials: {}".format(response.status_code, detail)
             )
         elif response.status_code == HTTP_STATUS_UNAUTHORIZED:
-            message = "EfficientIP/APIM returned HTTP 401 (unauthorized){}: {}{}".format(
-                "" if self._backend_leg_ok(response) else " on all {} attempt(s)".format(attempts),
-                detail,
-                self._unauthorized_hint(response),
+            message = "EfficientIP/APIM returned HTTP 401 (unauthorized): {}{}".format(
+                detail, self._unauthorized_hint(response),
             )
         else:
             message = "EfficientIP/APIM returned HTTP {}: {}".format(response.status_code, detail)
@@ -322,8 +298,7 @@ class EfficientipDdiConnector(BaseConnector):
 
     def _backend_leg_ok(self, response):
         """True when the gateway reached SOLIDserver (X-Backside-Transport all OK):
-        a 401 then is the backend's own credential verdict. FAIL, or no header,
-        stays retryable."""
+        a 401 then is the backend's own credential verdict."""
         tokens = (response.headers.get(BACKSIDE_TRANSPORT_HEADER) or "").upper().split()
         return bool(tokens) and all(token == "OK" for token in tokens)
 
@@ -341,8 +316,9 @@ class EfficientipDdiConnector(BaseConnector):
         if backside and "FAIL" in backside.upper():
             return (
                 " -- {}: {}, so the APIM could not reach its backend and answered 401 "
-                "itself. Not a credential problem: escalate to the APIM administrator "
-                "with this call's transaction id.{}".format(BACKSIDE_TRANSPORT_HEADER, backside, trans)
+                "itself. Check the mTLS client certificate (client_cert/client_key) "
+                "first, then give the APIM administrator this call's transaction "
+                "id.{}".format(BACKSIDE_TRANSPORT_HEADER, backside, trans)
             )
         return " -- no {} header: check client_id/client_secret and the client certificate.{}".format(
             BACKSIDE_TRANSPORT_HEADER, trans,
@@ -376,21 +352,6 @@ class EfficientipDdiConnector(BaseConnector):
         return data
 
     # ---- Config / input helpers ----
-
-    def _bounded_config_number(self, key, default, minimum, maximum):
-        """A numeric asset field, clamped to [minimum, maximum]; default on bad input."""
-        raw = self.get_config().get(key)
-        try:
-            value = float(raw)
-        except (TypeError, ValueError):
-            return default
-        return min(max(value, minimum), maximum)
-
-    def _retry_plan(self):
-        """(total attempts, base backoff seconds) for this asset."""
-        attempts = int(self._bounded_config_number("retry_count", DEFAULT_RETRY_COUNT, 1, MAX_RETRY_COUNT))
-        backoff = self._bounded_config_number("retry_backoff", DEFAULT_RETRY_BACKOFF, 0, MAX_RETRY_BACKOFF)
-        return attempts, backoff
 
     def _auth_headers(self, config):
         # Stripped: a pasted trailing newline would otherwise become part of the

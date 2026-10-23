@@ -1,6 +1,6 @@
 # UC17 — EfficientIP DDI Enrichment — Paquet de transfert (déploiement air-gapped)
 
-Généré le 2026-10-22 20:15 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
+Généré le 2026-10-23 18:11 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
 
 Ce paquet est autonome — tout ce qu'il faut pour déployer ce cas d'usage manuellement
 dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
@@ -11,7 +11,7 @@ dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
 
 | Chemin | Contenu |
 |--------|---------|
-| `connectors/` | Paquet(s) applicatif(s) connecteur : efficientip_ddi-v1.0.17.tgz |
+| `connectors/` | Paquet(s) applicatif(s) connecteur : efficientip_ddi-v1.0.18.tgz |
 | `connectors/source/` | Même(s) connecteur(s), extrait(s) — pour lecture, pas pour import |
 | `playbooks/` | Paquet(s) de playbooks : efficientip_ddi_enrich |
 | `playbooks/source/` | Même(s) playbook(s), extrait(s) — pour lecture, pas pour import |
@@ -27,7 +27,9 @@ d'installation.
 
 - **Ce qui s'applique dépend de ce qui est déjà installé — vérifiez d'abord la liste des applications.** Ouvrez Apps et recherchez `EfficientIP`. Si vous voyez **une seule** application (nommée `efficientip_ddi` / `EfficientIP DDI`), vous avez installé le paquet du 2026-08-31 ou un plus récent : celui-ci est une **mise à jour normale, sur place**. Installez-le par-dessus l'application existante — même identifiant interne — et votre actif (asset) existant continue de fonctionner avec tous ses identifiants. **Ne supprimez rien et ne ressaisissez aucun identifiant.** Si en revanche vous voyez **deux** applications (`efficientip_ddi` et `EfficientIP DDI (Classic)`), vous êtes encore sur un paquet antérieur au 2026-08-31, et c'est la note ci-dessous qui vous concerne.
 
-- **Un seul playbook (2026-10-15).** `efficientip_ddi_action_test` n'est plus livré : si vous l'avez importé, désactivez-le puis supprimez-le, et utilisez à la place le bouton Test Connectivity de l'asset (étape 1 de la Vérification). Là où une note plus ancienne ci-dessous demande de réimporter les deux playbooks, réimportez seulement `efficientip_ddi_enrich`. Le réimporter depuis ce paquet est facultatif : seule sa mise en forme a changé (celle qu'enregistre le VPE), pas son comportement. Si vous le faites, pointez de nouveau son bloc action sur votre asset et enregistrez, réglez son ou ses labels et son utilisateur **Run As**, puis **activez-le**. Le connecteur reste en v1.0.17 (rien à installer).
+- **Connecteur 1.0.18 : plus de nouvelle tentative sur HTTP 401 (2026-10-23).** Installez le connecteur v1.0.18 par-dessus l'application EfficientIP DDI existante (même identifiant : l'asset garde ses identifiants). Chaque requête n'est plus envoyée qu'une fois. Les champs d'asset `retry_count` et `retry_backoff` disparaissent : SOAR les retire de l'asset pendant la mise à jour, il n'y a donc rien à y modifier. Un 401 portant `X-Backside-Transport: FAIL FAIL` oriente désormais d'abord vers le certificat client mTLS. Aucun playbook à réimporter.
+
+- **Un seul playbook (2026-10-15).** `efficientip_ddi_action_test` n'est plus livré : si vous l'avez importé, désactivez-le puis supprimez-le, et utilisez à la place le bouton Test Connectivity de l'asset (étape 1 de la Vérification). Là où une note plus ancienne ci-dessous demande de réimporter les deux playbooks, réimportez seulement `efficientip_ddi_enrich`. Le réimporter depuis ce paquet est facultatif : seule sa mise en forme a changé (celle qu'enregistre le VPE), pas son comportement. Si vous le faites, pointez de nouveau son bloc action sur votre asset et enregistrez, réglez son ou ses labels et son utilisateur **Run As**, puis **activez-le**.
 
 - **Connecteur 1.0.17 et textes plus courts (2026-10-10).** Installez le connecteur v1.0.17 par-dessus l'app EfficientIP DDI existante (même identifiant : l'asset garde ses identifiants). Ses textes sont plus courts, et `list subnets` déclare désormais ses paramètres de filtre (`subnet_name`, `subnet_id`, `parent_subnet_name`, `site_name`) à la place d'un `name` qu'aucun résultat ne portait ; rien d'autre ne change. Réimportez les deux playbooks : leurs descriptions, notes de blocs et commentaires sont plus courts, leur comportement est inchangé. Après la réimportation de `efficientip_ddi_enrich`, pointez de nouveau son bloc action sur votre asset et enregistrez, réglez son ou ses labels et son utilisateur **Run As**, puis **activez-le**. Le plan d'implémentation dans `docs/` ne décrit plus que la conception actuelle, avec un Setup Guide.
 
@@ -42,8 +44,6 @@ d'installation.
 - **Ce paquet retire deux actions du connecteur : `get ip pool` et `list aliases`** (connecteur v1.0.11). Le connecteur n'appelle plus que deux services SOLIDserver : `ip_address_list` (`get ip address`) et `ip_block_subnet_list` (`list subnets`, `test connectivity`). Après la mise à jour, tout playbook qui appelle encore une action retirée échoue à cette étape. Cela inclut les playbooks `efficientip_ddi_enrich` et `efficientip_ddi_action_test` de tout paquet précédent : réimportez les deux depuis ce paquet pour qu'ils remplacent les versions précédentes. Si vous avez construit vos propres playbooks sur `get ip pool` ou `list aliases`, retravaillez-les avant la mise à jour. Votre actif (asset) et ses identifiants ne sont pas concernés. Le nouveau `efficientip_ddi_enrich` corrige aussi sa note de synthèse : avec les paquets du 2026-08-31 au 2026-09-09, le nom d'hôte, le sous-réseau, l'espace, l'adresse MAC et la classe revenaient vides. Ils sont désormais renseignés.
 
 - **Uniquement si la liste des applications en montrait DEUX.** Jusqu'au 2026-08-31, ce cas d'usage livrait deux applications : `efficientip_ddi` (basée sur le SDK) et `EfficientIP DDI (Classic)`. L'application SDK est retirée, car ses actions ne peuvent pas être exécutées depuis la page d'édition/consultation du connecteur dans l'interface web de SOAR — une limite de la plateforme, non de l'application. L'application classique est désormais la seule, et elle reprend le nom `efficientip_ddi` sous un nouvel identifiant interne : SOAR l'installe donc comme une application entièrement nouvelle, sans rien mettre à jour. Après l'installation : supprimez LES DEUX anciennes applications ainsi que leurs actifs (assets) via l'interface web (Apps > l'application > Delete), puis créez un nouvel actif pour la nouvelle application à partir du modèle fourni dans ce paquet. Ressaisissez tous les identifiants à la main ; les champs secrets ne sont pas transmis dans le modèle.
-
-- **Deux nouveaux champs d'actif, tous deux facultatifs.** `retry_count` (défaut 3) et `retry_backoff` (défaut 2 secondes) contrôlent la répétition d'une requête ayant reçu un HTTP 401. Leurs valeurs par défaut sont fonctionnelles : une mise à jour sur place ne demande aucune action, laissez-les telles quelles sauf si vous souhaitez les ajuster. Mettez `retry_count` à 1 pour désactiver complètement la répétition.
 
 ## Ordre d'installation
 

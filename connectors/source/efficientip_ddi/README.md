@@ -81,8 +81,6 @@ on three appliance probes listed in the UC17 plan's Known limitations.
 | `client_key` | Yes | password | PEM private key matching `client_cert` |
 | `client_ca` | No | string | PEM CA bundle for the APIM's server certificate. Blank uses `REQUESTS_CA_BUNDLE` / `CURL_CA_BUNDLE` when set, else the `requests` CA bundle — never the OS trust store |
 | `verify_ssl` | No (`true`) | boolean | |
-| `retry_count` | No (`3`) | numeric | Total attempts for an HTTP 401; `1` disables retrying; clamped to 1–10 |
-| `retry_backoff` | No (`2`) | numeric | Base seconds between 401 retries, growing linearly (1x, 2x, 3x); clamped to 0–30 |
 | `debug_logging` | No (`false`) | boolean | See Debug logging |
 
 `client_cert` and `client_ca` are `string`, not `password`: certificates are public (NFR-04), and
@@ -97,28 +95,24 @@ a password field read back over REST and written again corrupts it.
 |---|---|---|
 | `200` | success | body parsed as JSON |
 | `204` | no matching record | empty result; the action fails as not found |
-| `400` | **bad request** from SOLIDserver (`errno`/`sql_error` in the body) | never retried; `errno` in the message |
-| `401` | unauthorized, the **only** auth code | retried, see below |
-| `403` | **bad request** from the APIM, *not* forbidden | never retried; the message says so |
+| `400` | **bad request** from SOLIDserver (`errno`/`sql_error` in the body) | `errno` in the message |
+| `401` | unauthorized, the **only** auth code | the message names the cause, see below |
+| `403` | **bad request** from the APIM, *not* forbidden | the message says so |
 
 Read as standard HTTP, a 403 sends an operator hunting credentials; on this API it means the request
-was wrong (filter column, `WHERE` syntax, `limit`).
+was wrong (filter column, `WHERE` syntax, `limit`). No request is retried: each is sent once.
 
-### Retry on 401
+### 401
 
-The appliance returns 401 for a request that succeeds unchanged moments later: the APIM's backend
-leg fails (`X-Backside-Transport: FAIL FAIL`) and the gateway answers 401 itself, on about one call
-in three, whatever the client. The connector holds no per-call state, so a retry sends identical
-bytes.
+The 401 message reads the gateway's `X-Backside-Transport` header:
 
-- Every action, `test connectivity` included; 401 only.
-- **Not** retried when `X-Backside-Transport` is all `OK`: the gateway reached SOLIDserver, so the
-  401 is its credential verdict and repeating it risks a lockout. `FAIL`, or no header, is retried.
-- The final 401 message names the case: `OK` → check `ddi_username`/`ddi_password`; `FAIL` →
-  escalate to the APIM administrator with the `APIm-Debug-Trans-Id` it quotes; no header → check
-  `client_id`/`client_secret` and the client certificate.
-- Linear backoff, because rapid repeated auth failures trip gateway lockout and quota policies.
-- A call that succeeds on a retry reports `Succeeded on attempt N of M`, so the fault stays visible.
+- all `OK`: the gateway reached SOLIDserver, which rejected the request → check
+  `ddi_username`/`ddi_password`.
+- `FAIL`: the APIM's backend leg failed and the gateway answered 401 itself → check the mTLS client
+  certificate (`client_cert`/`client_key`) first, then give the APIM administrator the
+  `APIm-Debug-Trans-Id` the message quotes. A `FAIL FAIL` 401 on about one call in three stopped
+  once the appliance used a new client certificate.
+- no header → check `client_id`/`client_secret` and the client certificate.
 
 ### Debug logging
 
@@ -146,7 +140,7 @@ Build on the **connected** host, never on the airgapped target. The app bundles 
 
 ## Testing
 
-- **Unit suite** (59 tests; `tests/conftest.py` stubs the `phantom.*` modules):
+- **Unit suite** (53 tests; `tests/conftest.py` stubs the `phantom.*` modules):
   `uvx --with requests pytest connectors/efficientip_ddi/tests`.
 - **Mock** — `test/mock_efficientip_ddi.py`, port **8447**, mTLS required like the real APIM. It
   reads the `X-IPM-*` names and filters `ip_address_list` on `hostaddr` only, so a connector that
@@ -176,7 +170,6 @@ Build on the **connected** host, never on the airgapped target. The app bundles 
 
 - **IPv6:** `hostaddr` is confirmed for IPv4 only. The connector compresses IPv6
   (`2001:0db8::0001` → `2001:db8::1`); whether the appliance stores that form is unverified.
-- **Other 401s:** only one transient 401 has been captured (`FAIL FAIL`). Still unseen: whether
-  every transient one carries `FAIL`, and what a wrong credential returns (`OK OK` from the
-  backend, or no header from the gateway).
+- **Other 401s:** still unseen: what a wrong credential returns (`OK OK` from the backend, or no
+  header from the gateway).
 - **Range filters on `list subnets`:** see above.

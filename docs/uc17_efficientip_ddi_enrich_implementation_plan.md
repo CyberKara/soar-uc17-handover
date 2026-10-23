@@ -95,16 +95,15 @@ including an APIM prefix):
 |---|---|---|
 | 200 | success | parses JSON |
 | 204 | no matching record | `No IP address record found…` / `No subnet found…`, action failed |
-| 400 | bad request from SOLIDserver (body has `errno`) | never retried |
-| 401 | unauthorized, the only auth code | retried, see below |
-| 403 | bad request from the APIM, **not** forbidden | never retried |
+| 400 | bad request from SOLIDserver (body has `errno`) | `errno` in the message |
+| 401 | unauthorized, the only auth code | the message names the cause, see below |
+| 403 | bad request from the APIM, **not** forbidden | the message says so |
 
-**401 retry:** `retry_count` attempts in total (default 3, 1-10), linear backoff of
-`retry_backoff` seconds (default 2, 0-30). A 401 whose `X-Backside-Transport` is `OK OK` is
-SOLIDserver's own credential verdict and is not retried. `FAIL FAIL` means the APIM's backend leg
-failed and the gateway made up the 401: client-independent, about a third of calls on the
-appliance, fixed only on the APIM side; the message carries the `APIm-Debug-Trans-Id` to escalate
-with. A call that only succeeds on a retry says `Succeeded on attempt N of M`.
+No request is retried. **401:** `X-Backside-Transport` `OK OK` is SOLIDserver's own credential
+verdict (check `ddi_username`/`ddi_password`). `FAIL FAIL` means the APIM's backend leg failed and
+the gateway made up the 401: check the mTLS client certificate first, then give the APIM
+administrator the `APIm-Debug-Trans-Id` the message quotes. No header: check
+`client_id`/`client_secret` and the certificate.
 
 **`get ip address` records** (the 11 fields the appliance returns): `ip_id`, `ip_addr`,
 `subnet_name`, `site_name`, `name`, `mac_addr`, `ip_class_name`, `ip_class_parameters`,
@@ -131,7 +130,7 @@ more.
    | `ddi_username` / `ddi_password` | SOLIDserver account, sent as `X-IPM-*` |
    | `client_cert` / `client_key` | PEM client certificate and key for mTLS |
    | `client_ca` | optional PEM CA bundle; blank uses the `requests` CA bundle, not the OS store |
-   | `verify_ssl`, `retry_count`, `retry_backoff` | defaults `true`, 3, 2 |
+   | `verify_ssl` | default `true` |
    | `debug_logging` | off; on adds one progress line per call (URL without credentials, status, `X-Backside-Transport`, `APIm-Debug-Trans-Id`, body start) |
 
    Enter every credential by hand: password fields do not cross the air gap as usable values. Then
@@ -163,7 +162,6 @@ more.
 - **Not exercised on the mock:** a failed lookup row and the 5-record cap; note splitting is tested
   offline only. The demo's expired prompt is untested.
 - **Untyped fields:** an address in a field SOAR does not type as ip/ipv6 is not looked up.
-- **The transient 401** (`FAIL FAIL`) is an APIM fault; the retry is the only mitigation here.
 - **`list subnets` ranges are not built.** Looking a subnet up by address needs the range columns
   (`start_ip_addr`/`end_ip_addr` hex, `start_hostaddr`/`end_hostaddr` dotted), and three read-only
   appliance probes come first:

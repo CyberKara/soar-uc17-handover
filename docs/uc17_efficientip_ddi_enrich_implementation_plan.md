@@ -2,6 +2,11 @@
 
 Current design. How it got here (every dated change, test and investigation): `uc17_history.md`,
 not shipped in the handover. Open work: the Splunk project's `docs/next-steps.md` (not shipped).
+SOAR platform rules are named here and explained in `docs/vpe-dev/constraints.md` (playbooks) and
+`soar-connectors/docs/dev-rules.md` (connectors), neither shipped.
+
+**UC17's playbooks are maintained on the airgapped site (2026-10-26).** Packages ship the connector only;
+the playbook sections below describe the last version built here.
 
 ## Scope
 
@@ -19,10 +24,9 @@ not shipped in the handover. Open work: the Splunk project's `docs/next-steps.md
 |---|---|---|---|---|
 | `efficientip_ddi_enrich` | automation, `artifact_created` | `events` | **yes** | Looks up the IPs of new artifacts, writes the enrichment note |
 
-**Connector `efficientip_ddi`** (classic `BaseConnector`; the permanent FR-01 exemption, because
-the App Debugger cannot run SDK-app actions and it is the airgapped operator's only hands-on test).
-Actions: `test connectivity`, `get ip address`, `list subnets`. Every call is a bodiless GET with
-three auth layers:
+**Connector `efficientip_ddi`** (classic `BaseConnector`, the FR-01 default). Actions:
+`test connectivity`, `get ip address`, `list subnets`. Every call is a bodiless GET with three auth
+layers:
 
 1. mTLS to the APIM: `client_cert` + `client_key` (+ optional `client_ca`).
 2. `Authorization: Basic base64(client_id:client_secret)`, the APIM app credential.
@@ -38,12 +42,11 @@ No CF, no custom list, no Timer asset. The playbooks ship pointed at the asset `
 start → `collect_ips` (code) → `get_ip_address` (action) → `finalize` (code) → end. No inputs, no
 outputs.
 
-- **`collect_ips`:** `phantom.collect_from_contains(contains=["ip", "ipv6"])`, so every value of an
-  artifact field SOAR types as ip/ipv6 (the CEF registry plus each artifact's own `cef_types`), from
-  the artifacts in the run's scope (the new ones on a triggered run). A field not typed ip is
-  ignored even when it holds an address. Values are split on spaces, commas and semicolons; what
-  does not parse as an address is dropped; IPv6 is compressed. It then reads the container's notes
-  titled `EfficientIP DDI Enrichment*` over REST and drops every address whose row there reads
+- **`collect_ips`:** `phantom.collect_from_contains(contains=["ip", "ipv6"])`: the ip/ipv6-typed
+  values of the artifacts in the run's scope; an address in an untyped field is not looked up.
+  Values are split on spaces, commas and semicolons; what does not parse as an address is dropped;
+  IPv6 is compressed. It then reads the container's notes titled `EfficientIP DDI Enrichment*` over
+  REST and drops every address whose row there reads
   `found…` or `not found`; a `failed` or `skipped` one is looked up again. Nothing left: the run
   stops with a debug line and writes no note. At most 50 addresses per run; the rest are
   `skipped (over 50 addresses, next run)`.
@@ -64,7 +67,7 @@ outputs.
     is in the playbook run), `skipped (…)`. An IPv6 `not found` block says it is not proof of
     absence.
   - Above 19,000 characters the note splits into `EfficientIP DDI Enrichment (k/N)` parts, never
-    inside a block, with the table header repeated (the appliance cuts a note at about 22,000).
+    inside a block, with the table header repeated.
 
 ## Data model and API facts
 

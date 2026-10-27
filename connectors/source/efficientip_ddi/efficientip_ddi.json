@@ -10,7 +10,7 @@
     "logo_dark": "logo_dark.svg",
     "publisher": "Ted",
     "license": "Copyright (c) 2026",
-    "app_version": "1.0.18",
+    "app_version": "1.0.20",
     "utctime_updated": "2026-10-23T00:00:00.000000Z",
     "package_name": "phantom_efficientip_ddi",
     "main_module": "efficientip_ddi_connector.py",
@@ -118,6 +118,128 @@
                 },
                 "limit": {
                     "description": "Maximum number of records to return (default 1, a positive whole number). A limit is always sent: an unbounded call times out on the APIM.",
+                    "data_type": "numeric",
+                    "required": false,
+                    "default": 1,
+                    "order": 1
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.parameter.address",
+                    "data_type": "string",
+                    "contains": [
+                        "ip",
+                        "ipv6"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.limit",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.address",
+                    "data_type": "string",
+                    "contains": [
+                        "ip",
+                        "ipv6"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.ip_id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.ip_addr",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.subnet_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.site_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.name",
+                    "data_type": "string",
+                    "contains": [
+                        "host name"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.mac_addr",
+                    "data_type": "string",
+                    "contains": [
+                        "mac address"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.ip_class_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.ip_class_parameters",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.description",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.parent_subnet_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.site_class_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.ip_alias",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failed"
+                    ]
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric"
+                }
+            ],
+            "render": {
+                "type": "table"
+            },
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "get ip addresses",
+            "identifier": "get_ip_addresses",
+            "description": "Look up several IP addresses in SOLIDserver's IPAM, one result per address (same fields as get ip address)",
+            "type": "investigate",
+            "read_only": true,
+            "parameters": {
+                "addresses": {
+                    "description": "IPv4/IPv6 addresses separated by commas, semicolons, spaces or new lines, or a list; one lookup and one result per address",
+                    "data_type": "string",
+                    "required": true,
+                    "order": 0
+                },
+                "limit": {
+                    "description": "Maximum number of records per address (default 1, a positive whole number). A limit is always sent: an unbounded call times out on the APIM.",
                     "data_type": "numeric",
                     "required": false,
                     "default": 1,

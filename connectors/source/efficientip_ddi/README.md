@@ -2,11 +2,9 @@
 
 Splunk SOAR connector for IP address and subnet lookups in an EfficientIP SOLIDserver DDI
 (DNS/DHCP/IPAM) backend, reached through an APIM gateway rather than called directly. Used by the
-`efficientip_ddi_enrich` and `efficientip_ddi_action_test` playbooks (UC17, `soar-playbooks`).
+`efficientip_ddi_enrich` playbook (UC17, `soar-playbooks`).
 
-**Classic `BaseConnector` style**, the permanent FR-01 exemption in `docs/dev-rules.md`: SOAR's App
-Debugger (the asset's view page) cannot run SDK-app actions, and on the airgapped appliance it is
-the operator's only hands-on way to run one.
+**Classic `BaseConnector` style**, the FR-01 default (`docs/dev-rules.md`).
 
 The actions do **raw pass-through**: `action_result.add_data(record)` forwards every key SOLIDserver
 returns, one data item per record.
@@ -52,12 +50,19 @@ them under a path prefix: put everything before `/rest` in `base_url`, and the c
 |---|---|---|---|
 | `test connectivity` | test | — | `GET /rest/ip_block_subnet_list?limit=1` |
 | `get ip address` | investigate | `address` (required, IPv4/IPv6), `limit` (default 1) | `GET /rest/ip_address_list?WHERE=hostaddr='<dotted ip>'` |
+| `get ip addresses` | investigate | `addresses` (required: IPv4/IPv6 separated by commas, semicolons, spaces or new lines, or a list), `limit` (default 1, per address) | the `get ip address` request once per address |
 | `list subnets` | investigate | at most one of `subnet_name` / `subnet_id` / `parent_subnet_name` / `site_name`; `limit` (default 1) | `GET /rest/ip_block_subnet_list` |
 
 Not found (HTTP 204) fails the action with `No IP address record found in SOLIDserver for <ip>`
 (plus a caveat for IPv6) or `No subnet found in SOLIDserver[ for <column>='<value>']`. Each record
 gets `description` (from `description=` in its class parameters); `get ip address` records also get
 `address`, the address asked.
+
+**`get ip addresses`** adds one action result per address, as `get ip address` would for it:
+`action_result.parameter.address` names it, and each keeps its own status and message. An entry that
+is not an IP address fails alone. The action succeeds when at least one lookup does. `addresses` has
+no `contains`: SOAR checks a parameter's whole value against it before dispatch, and a list is not
+one address.
 
 **`list subnets` filters.** `subnet_name` is the subnet's **name, a label** such as
 `CORP_LAN-USERS`, not its CIDR. No filter lists subnets unfiltered, bounded by `limit`; two or more

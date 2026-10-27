@@ -1,10 +1,7 @@
 # efficientip_ddi_connector.py
 """EfficientIP DDI SOAR Connector - IPAM enrichment against SOLIDserver via APIM.
 
-Classic BaseConnector style, a recorded exemption from FR-01 in
-docs/dev-rules.md: the App Debugger cannot dispatch actions for SDK-based apps,
-and on an airgapped appliance that panel is the operator's only way to run an
-action by hand. The README holds the field-name provenance and the history.
+Classic BaseConnector style, the FR-01 default (docs/dev-rules.md). The README holds the field-name provenance and the history.
 
 Auth (3 layers, every request):
   1. mTLS -- client_cert/client_key (+ optional client_ca).
@@ -18,6 +15,7 @@ import base64
 import ipaddress
 import json
 import os
+import re
 import tempfile
 from urllib.parse import parse_qsl
 
@@ -66,6 +64,7 @@ class EfficientipDdiConnector(BaseConnector):
         action_mapping = {
             "test_connectivity": self._handle_test_connectivity,
             "get_ip_address": self._handle_get_ip_address,
+            "get_ip_addresses": self._handle_get_ip_addresses,
             "list_subnets": self._handle_list_subnets,
         }
 
@@ -109,7 +108,46 @@ class EfficientipDdiConnector(BaseConnector):
         limit = self._limit_from(param, action_result)
         if limit is None:
             return action_result.get_status()
+        return self._lookup_ip_address(address, query_addr, limit, action_result)
 
+    def _handle_get_ip_addresses(self, param):
+        """get ip address for several addresses: one action result each, so each
+        address keeps its own status, message and records."""
+        raw = param.get("addresses")
+        # A list bound from a playbook can arrive as a list or as its text form.
+        values = raw if isinstance(raw, (list, tuple)) else [raw]
+        addresses = []
+        for value in values:
+            for part in re.split(r"[\s,;\[\]'\"]+", str(value or "")):
+                if part and part not in addresses:
+                    addresses.append(part)
+
+        limit_result = ActionResult(dict(param))
+        limit = self._limit_from(param, limit_result)
+        if limit is None or not addresses:
+            if limit is not None:
+                limit_result.set_status(phantom.APP_ERROR, "No address given in 'addresses'")
+            self.add_action_result(limit_result)
+            return limit_result.get_status()
+
+        looked_up, succeeded = set(), 0
+        for address in addresses:
+            action_result = self.add_action_result(ActionResult({"address": address, "limit": limit}))
+            query_addr = self._validate_ip(address, action_result)
+            if query_addr is None:
+                continue
+            if query_addr in looked_up:
+                action_result.set_status(phantom.APP_ERROR, "Same address as {} earlier in this list".format(query_addr))
+                continue
+            looked_up.add(query_addr)
+            self.save_progress("Looking up {}".format(address))
+            if phantom.is_success(self._lookup_ip_address(address, query_addr, limit, action_result)):
+                succeeded += 1
+
+        return phantom.APP_SUCCESS if succeeded else phantom.APP_ERROR
+
+    def _lookup_ip_address(self, address, query_addr, limit, action_result):
+        """One IPAM lookup into action_result: a data item per record."""
         # hostaddr is the dotted filter column (host_addr answers sql_error 7 on
         # the target appliance).
         ret_val, records = self._make_rest_call(
@@ -210,17 +248,11 @@ class EfficientipDdiConnector(BaseConnector):
 
             verify_ssl = config.get("verify_ssl", True)
             verify = ca_path if (verify_ssl and ca_path) else verify_ssl
-            if verify is True:
-                # trust_env is off below, so honour the platform's CA bundle
-                # explicitly when no client_ca is set.
-                verify = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("CURL_CA_BUNDLE") or True
 
-            # trust_env=False: requests would otherwise let ~/.netrc replace the
-            # Authorization header and HTTPS_PROXY intercept the mTLS handshake,
-            # both of which surface as a 401 that is invisible in the request.
+            # trust_env stays on (requests' default, as in Splunk's own apps): SOAR
+            # passes its proxy settings and certificate store (REQUESTS_CA_BUNDLE)
+            # to the action through the environment.
             session = requests.Session()
-            session.trust_env = False
-            session.proxies = {}
 
             response = session.request(
                 "GET", url, headers=headers, params=params,

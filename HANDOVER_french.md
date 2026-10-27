@@ -1,6 +1,6 @@
 # UC17 — EfficientIP DDI Enrichment — Paquet de transfert (déploiement air-gapped)
 
-Généré le 2026-10-23 18:11 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
+Généré le 2026-10-27 08:59 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
 
 Ce paquet est autonome — tout ce qu'il faut pour déployer ce cas d'usage manuellement
 dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
@@ -11,10 +11,8 @@ dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
 
 | Chemin | Contenu |
 |--------|---------|
-| `connectors/` | Paquet(s) applicatif(s) connecteur : efficientip_ddi-v1.0.18.tgz |
+| `connectors/` | Paquet(s) applicatif(s) connecteur : efficientip_ddi-v1.0.20.tgz |
 | `connectors/source/` | Même(s) connecteur(s), extrait(s) — pour lecture, pas pour import |
-| `playbooks/` | Paquet(s) de playbooks : efficientip_ddi_enrich |
-| `playbooks/source/` | Même(s) playbook(s), extrait(s) — pour lecture, pas pour import |
 | `assets/*.json` | Modèles de configuration d'assets (identifiants masqués — voir ci-dessous) |
 | `diagnostics/` | Scripts à exécuter sur la cible pour l'interroger — voir ci-dessous |
 | `docs/` | Document de plan d'implémentation, pour le contexte de conception complet |
@@ -27,15 +25,13 @@ d'installation.
 
 - **Ce qui s'applique dépend de ce qui est déjà installé — vérifiez d'abord la liste des applications.** Ouvrez Apps et recherchez `EfficientIP`. Si vous voyez **une seule** application (nommée `efficientip_ddi` / `EfficientIP DDI`), vous avez installé le paquet du 2026-08-31 ou un plus récent : celui-ci est une **mise à jour normale, sur place**. Installez-le par-dessus l'application existante — même identifiant interne — et votre actif (asset) existant continue de fonctionner avec tous ses identifiants. **Ne supprimez rien et ne ressaisissez aucun identifiant.** Si en revanche vous voyez **deux** applications (`efficientip_ddi` et `EfficientIP DDI (Classic)`), vous êtes encore sur un paquet antérieur au 2026-08-31, et c'est la note ci-dessous qui vous concerne.
 
+- **Connecteur 1.0.20 : nouvelle action `get ip addresses`, et le proxy de SOAR s'applique (2026-10-27).** Installez le connecteur v1.0.20 par-dessus l'application EfficientIP DDI existante (même identifiant : l'asset garde ses identifiants ; cela remplace aussi l'étape 1.0.18 ci-dessous). `get ip addresses` recherche plusieurs adresses IPv4/IPv6 données dans un seul paramètre (séparées par des virgules, points-virgules, espaces ou retours à la ligne, ou une liste) et donne un résultat par adresse, comme `get ip address` ; une entrée qui n'est pas une adresse IP échoue seule. `get ip address` est inchangée. Le connecteur utilise désormais le proxy et le magasin de certificats de SOAR, comme les applications de Splunk : si un proxy est configuré dans SOAR et que l'APIM doit être joint en direct, excluez l'hôte de l'APIM (`NO_PROXY`). Rien à modifier dans un playbook.
+
 - **Connecteur 1.0.18 : plus de nouvelle tentative sur HTTP 401 (2026-10-23).** Installez le connecteur v1.0.18 par-dessus l'application EfficientIP DDI existante (même identifiant : l'asset garde ses identifiants). Chaque requête n'est plus envoyée qu'une fois. Les champs d'asset `retry_count` et `retry_backoff` disparaissent : SOAR les retire de l'asset pendant la mise à jour, il n'y a donc rien à y modifier. Un 401 portant `X-Backside-Transport: FAIL FAIL` oriente désormais d'abord vers le certificat client mTLS. Aucun playbook à réimporter.
 
-- **Un seul playbook (2026-10-15).** `efficientip_ddi_action_test` n'est plus livré : si vous l'avez importé, désactivez-le puis supprimez-le, et utilisez à la place le bouton Test Connectivity de l'asset (étape 1 de la Vérification). Là où une note plus ancienne ci-dessous demande de réimporter les deux playbooks, réimportez seulement `efficientip_ddi_enrich`. Le réimporter depuis ce paquet est facultatif : seule sa mise en forme a changé (celle qu'enregistre le VPE), pas son comportement. Si vous le faites, pointez de nouveau son bloc action sur votre asset et enregistrez, réglez son ou ses labels et son utilisateur **Run As**, puis **activez-le**.
+- **Aucun playbook dans ce paquet (2026-10-26).** `efficientip_ddi_enrich` est maintenu sur votre site : gardez votre version. Là où une note plus ancienne ci-dessous demande de réimporter un playbook, sautez cette étape. `efficientip_ddi_action_test` n'est plus livré non plus : si vous l'avez encore, désactivez-le puis supprimez-le, et utilisez à la place le bouton Test Connectivity de l'asset (étape 1 de la Vérification).
 
 - **Connecteur 1.0.17 et textes plus courts (2026-10-10).** Installez le connecteur v1.0.17 par-dessus l'app EfficientIP DDI existante (même identifiant : l'asset garde ses identifiants). Ses textes sont plus courts, et `list subnets` déclare désormais ses paramètres de filtre (`subnet_name`, `subnet_id`, `parent_subnet_name`, `site_name`) à la place d'un `name` qu'aucun résultat ne portait ; rien d'autre ne change. Réimportez les deux playbooks : leurs descriptions, notes de blocs et commentaires sont plus courts, leur comportement est inchangé. Après la réimportation de `efficientip_ddi_enrich`, pointez de nouveau son bloc action sur votre asset et enregistrez, réglez son ou ses labels et son utilisateur **Run As**, puis **activez-le**. Le plan d'implémentation dans `docs/` ne décrit plus que la conception actuelle, avec un Setup Guide.
-
-- **`efficientip_ddi_enrich` est maintenant un playbook d'automatisation (2026-10-02).** Il n'a plus d'entrée `ip` ni de sortie : il s'exécute tout seul à la création d'un artifact sur un container portant son label, et recherche les adresses IP des nouveaux artifacts (voir Vérification). Ré-importez-le pour qu'il remplace la version précédente, pointez de nouveau son bloc action sur votre asset et enregistrez, mettez comme label(s) celui des containers à enrichir (`events` à la livraison), réglez son utilisateur **Run As** et **activez-le**. Un de vos playbooks qui le lançait avec une entrée `ip` ou lisait ses sorties doit être modifié : il ne les prend plus. Le connecteur reste en v1.0.16 (rien à installer).
-
-- **La mise en page de la note de `efficientip_ddi_enrich` a changé (2026-10-02).** Le tableau a maintenant les colonnes IP, Hostname, Aliases, Subnet, Parent subnet, Lookup ; Space, MAC, Class et Description sont passés dans la section **Per-IP detail**, désormais un bloc par enregistrement avec un champ par ligne (voir Vérification). Le ré-import décrit dans la note ci-dessus couvre aussi ce changement.
 
 - **Le connecteur v1.0.16 et `efficientip_ddi_enrich` ont changé (2026-10-01, plus tard).** La v1.0.16 ne change que les sorties déclarées par `get ip address` : elle liste désormais `parent_subnet_name`, `site_class_name` et `ip_alias` (champs que votre SOLIDserver renvoie) et ne liste plus `multistatus` (qu'il ne renvoie pas). Installez-la par-dessus l'application existante, en mise à jour sur place (votre asset et ses identifiants restent). `efficientip_ddi_enrich` accepte maintenant une ou plusieurs adresses dans `ip` et écrit une note avec un tableau (voir Vérification) ; ré-importez-le pour qu'il remplace la version précédente. **Ses sorties ont changé.** `status` vaut maintenant `success` (toutes les adresses trouvées), `partial` (certaines trouvées), `not_found`, `failed` (au moins une recherche a échoué) ou `error` : `partial` revient, avec ce nouveau sens. Toutes les autres sorties (`hostname`, `subnet`, `space`, ...) sont maintenant des listes avec une entrée par ligne du tableau, et il y a de nouvelles sorties `lookup`, `aliases`, `parent_subnet` et `space_class`. Un de vos playbooks qui lit ces sorties doit être modifié.
 
@@ -68,31 +64,13 @@ d'installation.
      de passe associé à un nom d'utilisateur résiduel de l'environnement source ne
      s'authentifie auprès de rien et renvoie une erreur HTTP 401.
 
-   **Les playbooks sont livrés pointant vers les noms d'assets ci-dessous.** Créez vos
-   assets avec ces noms, ou gardez vos propres noms et redirigez les blocs d'action de
-   chaque playbook vers vos assets dans le VPE, puis enregistrez : chaque playbook de ce
-   paquet est conçu pour résister à un enregistrement. (Un enregistrement rend un playbook
-   lancé à la main disponible sur tous les libellés de conteneur ; le réimporter rétablit
-   le libellé.)
-
-   | Nom de l'asset | Application | Utilisé par | Modèle |
-   |---|---|---|---|
-   | `efficientip_ddi mock` | EfficientIP DDI | `efficientip_ddi_enrich` | `assets/efficientip_ddi_mock.json` |
-
-3. **Importer les playbooks** depuis `playbooks/*.tgz`, via *Import Playbook* sur la page
-   Playbooks de l'interface SOAR cible. (`playbooks/source/` est le même code extrait pour lecture —
-   ne pas importer depuis ce dossier, l'interface a besoin du `.tgz`.)
-4. **Activer les playbooks d'automatisation** (`efficientip_ddi_enrich`) et définir leur utilisateur
-   **Run As** selon le guide d'installation du document de plan d'implémentation
-   (voir `docs/`).
-
 ## Vérification
 
 1. **Test Connectivity** sur l'asset EfficientIP DDI. Il liste un sous-réseau (`ip_block_subnet_list`) : un succès valide `base_url`, les identifiants et le certificat client. Un HTTP 401 est expliqué à l'étape 3.
 
-2. **Vérifiez ensuite `efficientip_ddi_enrich`, qui se lance désormais tout seul.** C'est un playbook d'automatisation : une fois actif, il s'exécute à chaque création d'artifact sur un container dont le label figure dans sa liste de labels (`events` à la livraison ; mettez vos propres labels dans les paramètres du playbook). Il recherche chaque valeur d'un champ d'artifact que SOAR type comme adresse IP (`sourceAddress`, `destinationAddress`, ...), 50 au plus par exécution, et écrit une note `EfficientIP DDI Enrichment` : une ligne de synthèse, un tableau avec une ligne par enregistrement IPAM (IP, Hostname, Aliases, Subnet, Parent subnet, Lookup), puis une section **Per-IP detail** : un bloc par enregistrement, l'IP puis une ligne pour chacun de ces champs : espace, classe de l'espace, MAC, classe, description, IP en hexadécimal et paramètres de classe (`-` si vide) ; le bloc d'une recherche en échec donne son message. La colonne Lookup vaut `found`, `not found`, `failed` ou `skipped`. Une adresse présente dans plusieurs espaces a une ligne par espace (5 au plus). Une adresse à laquelle une note du container a déjà répondu (`found` ou `not found`) n'est pas recherchée de nouveau ; une adresse `failed` ou `skipped` l'est, au prochain artifact. À essayer sur un container de test portant votre label : ajoutez un artifact avec une adresse de votre IPAM dans `sourceAddress` et une adresse inutilisée dans `destinationAddress` (attendu : une note, `found`, `not found`), puis un second artifact avec les deux mêmes adresses (attendu : pas de nouvelle note) et, si votre site en a, une adresse IPv6 présente dans votre IPAM. On ne sait pas encore si ce service SOLIDserver renvoie les enregistrements IPv6 : indiquez ce que vous obtenez.
+2. **`efficientip_ddi_enrich` n'est pas dans ce paquet : il est maintenu sur votre site.** Après l'installation du connecteur, lancez le vôtre sur un container de test avec une adresse de votre IPAM et une adresse inutilisée, et vérifiez sa note.
 
-3. **Un HTTP 401 indique désormais de quel type il s'agit.** Le message cite l'en-tête `X-Backside-Transport` de la passerelle. `OK OK` : SOLIDserver lui-même a refusé les identifiants, vérifiez `ddi_username`/`ddi_password` (pas de nouvel essai). `FAIL FAIL` : l'APIM n'a pas pu joindre son backend ; ce n'est pas un problème d'identifiants, transmettez l'`APIm-Debug-Trans-Id` du message à l'administrateur de l'APIM. Pas d'en-tête : vérifiez `client_id`/`client_secret` et le certificat client. Notez lequel des trois vous voyez.
+3. **Un HTTP 401 indique désormais de quel type il s'agit.** Le message cite l'en-tête `X-Backside-Transport` de la passerelle. `OK OK` : SOLIDserver lui-même a refusé les identifiants, vérifiez `ddi_username`/`ddi_password` (pas de nouvel essai). `FAIL FAIL` : l'APIM n'a pas pu joindre son backend et a répondu elle-même ; vérifiez d'abord le certificat client mTLS (`client_cert`/`client_key`), puis transmettez l'`APIm-Debug-Trans-Id` du message à l'administrateur de l'APIM. Pas d'en-tête : vérifiez `client_id`/`client_secret` et le certificat client. Notez lequel des trois vous voyez.
 
 Si une exécution échoue d'une façon que les notes n'expliquent pas, consultez `playbook.log`/`actiond.log` sur l'hôte SOAR cible. Pour plus de détail sur un appel en échec, cochez `debug_logging` sur l'asset : chaque résultat d'action affiche alors une ligne par appel (URL, statut, en-têtes de la passerelle, début de la réponse).
 

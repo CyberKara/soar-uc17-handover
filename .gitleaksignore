@@ -4,8 +4,4 @@
 # private-key: the PEM header/footer marker strings in _normalize_pem()'s
 # delimiter tuple list, not key material (no base64 run over 60 characters
 # anywhere in the package). gitleaks reports the delimiter block as one finding.
-connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:455
-
-# generic-api-key: the VPE's own comparisonKey node field (the placeholder
-# comparison_key_0 of an unused loop condition on action blocks), not a credential.
-playbooks/source/efficientip_ddi_enrich/efficientip_ddi_enrich.json:generic-api-key:118
+connectors/source/efficientip_ddi/efficientip_ddi_connector.py:private-key:487

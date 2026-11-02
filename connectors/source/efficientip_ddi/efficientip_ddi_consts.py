@@ -49,8 +49,7 @@ IP_BLOCK_SUBNET_LIST_PATH = "/rest/ip_block_subnet_list"
 #
 # Also filterable but NOT exposed: start_ip_addr/end_ip_addr (hex) and
 # start_hostaddr/end_hostaddr (dotted). A range filter needs AND and comparison
-# operators, neither confirmed; see the probes in the UC17 plan's Known
-# limitations.
+# operators, neither confirmed.
 LIST_SUBNETS_FILTERS = {
     "subnet_name": "subnet_name",
     "subnet_id": "subnet_id",

@@ -1,7 +1,7 @@
 # efficientip_ddi_connector.py
 """EfficientIP DDI SOAR Connector - IPAM enrichment against SOLIDserver via APIM.
 
-Classic BaseConnector style, the FR-01 default (docs/dev-rules.md). The README holds the field-name provenance and the history.
+Classic BaseConnector style. The README holds the field-name provenance and the history.
 
 Auth (3 layers, every request):
   1. mTLS -- client_cert/client_key (+ optional client_ca).

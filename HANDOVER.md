@@ -1,6 +1,6 @@
 # UC17 — EfficientIP DDI Enrichment — Air-Gapped Handover Package
 
-Generated 2026-10-27 08:59 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
+Generated 2026-11-02 21:46 UTC from `efficientip_ddi_enrich` (source env: `soar8`).
 
 This package is self-contained — everything needed to deploy this use case by hand
 in an environment with no network access back to this repo or to `soar8`.
@@ -11,7 +11,7 @@ in an environment with no network access back to this repo or to `soar8`.
 
 | Path | What |
 |------|------|
-| `connectors/` | Connector app package(s): efficientip_ddi-v1.0.20.tgz |
+| `connectors/` | Connector app package(s): efficientip_ddi-v1.0.21.tgz |
 | `connectors/source/` | Same connector(s), extracted — for reading, not for import |
 | `assets/*.json` | Asset config templates (credentials redacted — see below) |
 | `diagnostics/` | Scripts you run on the target to answer questions about it — see below |
@@ -23,6 +23,8 @@ These apply only if this app is already installed on the target from a
 previous package. On a completely fresh target, skip to Install order.
 
 - **Which of these applies depends on what is already installed — check the Apps list first.** Open Apps and search for `EfficientIP`. If you see **exactly one** app (named `efficientip_ddi` / `EfficientIP DDI`), you installed the 2026-08-31 package or later: this one is a **normal in-place upgrade**. Install it over the existing app — same internal identifier — and your existing asset keeps working with every credential intact. **Do not delete anything and do not re-enter any credential.** If instead you see **two** apps (an `efficientip_ddi` and an `EfficientIP DDI (Classic)`), you are still on a package older than 2026-08-31, and the note below applies to you instead.
+
+- **Connector 1.0.21: internal comments only (2026-11-02).** Install connector v1.0.21 over the existing EfficientIP DDI app (same identifier: the asset keeps its credentials). It behaves exactly like 1.0.20 and replaces the 1.0.20 step below: if 1.0.20 is not installed yet, install 1.0.21 and read that note for what changes.
 
 - **Connector 1.0.20: new action `get ip addresses`, and SOAR's proxy setting applies (2026-10-27).** Install connector v1.0.20 over the existing EfficientIP DDI app (same identifier: the asset keeps its credentials; it also replaces the 1.0.18 step below). `get ip addresses` looks up several IPv4/IPv6 addresses given in one parameter (separated by commas, semicolons, spaces or new lines, or a list) and gives one result per address, the same as `get ip address`; an entry that is not an IP address fails alone. `get ip address` is unchanged. The connector now uses SOAR's proxy setting and certificate store, as Splunk's own apps do: if your SOAR has a proxy set and the APIM must be reached directly, exclude the APIM host from it (`NO_PROXY`). Nothing to change in a playbook.
 

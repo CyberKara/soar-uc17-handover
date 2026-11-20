@@ -10,8 +10,8 @@
     "logo_dark": "logo_dark.svg",
     "publisher": "Ted",
     "license": "Copyright (c) 2026",
-    "app_version": "1.0.21",
-    "utctime_updated": "2026-10-23T00:00:00.000000Z",
+    "app_version": "1.0.22",
+    "utctime_updated": "2026-11-17T00:00:00.000000Z",
     "package_name": "phantom_efficientip_ddi",
     "main_module": "efficientip_ddi_connector.py",
     "min_phantom_version": "6.4.1",
@@ -68,7 +68,7 @@
             "order": 7
         },
         "client_ca": {
-            "description": "PEM CA bundle to verify APIM's server certificate (optional -- blank uses system CAs)",
+            "description": "PEM CA bundle to verify APIM's server certificate (optional -- blank uses REQUESTS_CA_BUNDLE or CURL_CA_BUNDLE when set, else the requests CA bundle)",
             "data_type": "string",
             "required": false,
             "order": 8

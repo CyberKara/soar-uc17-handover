@@ -1,6 +1,6 @@
 # UC17 — EfficientIP DDI Enrichment — Paquet de transfert (déploiement air-gapped)
 
-Généré le 2026-11-02 21:46 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
+Généré le 2026-11-20 18:15 UTC à partir de `efficientip_ddi_enrich` (environnement source : `soar8`).
 
 Ce paquet est autonome — tout ce qu'il faut pour déployer ce cas d'usage manuellement
 dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
@@ -11,7 +11,7 @@ dans un environnement sans accès réseau vers ce dépôt ni vers `soar8`.
 
 | Chemin | Contenu |
 |--------|---------|
-| `connectors/` | Paquet(s) applicatif(s) connecteur : efficientip_ddi-v1.0.21.tgz |
+| `connectors/` | Paquet(s) applicatif(s) connecteur : efficientip_ddi-v1.0.22.tgz |
 | `connectors/source/` | Même(s) connecteur(s), extrait(s) — pour lecture, pas pour import |
 | `assets/*.json` | Modèles de configuration d'assets (identifiants masqués — voir ci-dessous) |
 | `diagnostics/` | Scripts à exécuter sur la cible pour l'interroger — voir ci-dessous |
@@ -24,6 +24,8 @@ depuis un paquet précédent. Sur une cible vierge, passez à l'ordre
 d'installation.
 
 - **Ce qui s'applique dépend de ce qui est déjà installé — vérifiez d'abord la liste des applications.** Ouvrez Apps et recherchez `EfficientIP`. Si vous voyez **une seule** application (nommée `efficientip_ddi` / `EfficientIP DDI`), vous avez installé le paquet du 2026-08-31 ou un plus récent : celui-ci est une **mise à jour normale, sur place**. Installez-le par-dessus l'application existante — même identifiant interne — et votre actif (asset) existant continue de fonctionner avec tous ses identifiants. **Ne supprimez rien et ne ressaisissez aucun identifiant.** Si en revanche vous voyez **deux** applications (`efficientip_ddi` et `EfficientIP DDI (Classic)`), vous êtes encore sur un paquet antérieur au 2026-08-31, et c'est la note ci-dessous qui vous concerne.
+
+- **Connecteur 1.0.22 : une description de champ (2026-11-20).** Installez le connecteur v1.0.22 par-dessus l'application EfficientIP DDI existante (même identifiant : l'asset garde ses identifiants). Il se comporte exactement comme la 1.0.21 ; la description de `client_ca` dit désormais ce qu'utilise une valeur vide : `REQUESTS_CA_BUNDLE` ou `CURL_CA_BUNDLE` s'ils sont définis, sinon le paquet d'AC livré avec `requests`.
 
 - **Connecteur 1.0.21 : commentaires internes uniquement (2026-11-02).** Installez le connecteur v1.0.21 par-dessus l'application EfficientIP DDI existante (même identifiant : l'asset garde ses identifiants). Il se comporte exactement comme la 1.0.20 et remplace l'étape 1.0.20 ci-dessous : si la 1.0.20 n'est pas encore installée, installez la 1.0.21 et lisez cette note pour ce qui change.
 

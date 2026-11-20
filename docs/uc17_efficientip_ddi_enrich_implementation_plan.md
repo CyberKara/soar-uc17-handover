@@ -3,29 +3,34 @@
 Current design. How it got here (every dated change, test and investigation): `uc17_history.md`,
 not shipped in the handover. Open work: the Splunk project's `docs/next-steps.md` (not shipped).
 SOAR platform rules are named here and explained in `docs/vpe-dev/constraints.md` (playbooks) and
-`soar-connectors/docs/dev-rules.md` (connectors), neither shipped.
+`soar-connectors/docs/dev-rules.md` (connectors), neither shipped. Why each choice was made: the
+team doc `mega-soar-doc`, page `docs/use-cases/uc17-efficientip-ddi.md`, which quotes the passages
+marked `megadoc:start`.
 
 **UC17's playbooks are maintained on the airgapped site (2026-10-26).** Packages ship the connector only;
 the playbook sections below describe the last version built here.
 
 ## Scope
 
+<!-- megadoc:start uc17.scope -->
 - Every IP address on a new artifact of a labelled container is looked up in EfficientIP
   SOLIDserver's IPAM, reached through the organisation's APIM gateway, and the result is written to
   the container as one note. Each address is looked up once per container.
-- A diagnostic playbook lets an operator run the connector's actions through SOAR's real dispatch.
 - Read-only: nothing is written to IPAM. Out of scope: DNS records (no record-level DNS service is
   confirmed on the APIM), IP pools and aliases (removed), lookups by address range (not built, see
   Known limitations).
+<!-- megadoc:end uc17.scope -->
 
 ## Architecture
 
+<!-- megadoc:start uc17.architecture -->
 | Playbook | Type | Label | Active | Role |
 |---|---|---|---|---|
 | `efficientip_ddi_enrich` | automation, `artifact_created` | `events` | **yes** | Looks up the IPs of new artifacts, writes the enrichment note |
+<!-- megadoc:end uc17.architecture -->
 
 **Connector `efficientip_ddi`** (classic `BaseConnector`, the FR-01 default). Actions:
-`test connectivity`, `get ip address`, `list subnets`. Every call is a bodiless GET with three auth
+`test connectivity`, `get ip address`, `get ip addresses`, `list subnets`. Every call is a bodiless GET with three auth
 layers:
 
 1. mTLS to the APIM: `client_cert` + `client_key` (+ optional `client_ca`).
@@ -160,14 +165,21 @@ more.
 
 ## Known limitations
 
+<!-- megadoc:start uc17.limitations -->
 - **IPv6:** `hostaddr` is confirmed for IPv4 only, and whether SOLIDserver stores the compressed or
   the expanded form is unknown; an IPv6 `not found` is not proof of absence.
-- **Not exercised on the mock:** a failed lookup row and the 5-record cap; note splitting is tested
-  offline only. The demo's expired prompt is untested.
 - **Untyped fields:** an address in a field SOAR does not type as ip/ipv6 is not looked up.
+- **Fixed fields:** the APIM fixes the fields a lookup returns; the connector cannot ask for more.
 - **`list subnets` ranges are not built.** Looking a subnet up by address needs the range columns
-  (`start_ip_addr`/`end_ip_addr` hex, `start_hostaddr`/`end_hostaddr` dotted), and three read-only
-  appliance probes come first:
+  and three read-only appliance probes first (Range probes, in this plan).
+- `list subnets`' `subnet_start_ip_addr`/`subnet_end_ip_addr` names are an analogy to the
+  `subnet_*` fields of `ip_address_list`, not vendor-confirmed.
+<!-- megadoc:end uc17.limitations -->
+
+- **Not exercised on the mock:** a failed lookup row and the 5-record cap; note splitting is tested
+  offline only.
+- **Range probes.** The range columns are `start_ip_addr`/`end_ip_addr` (hex) and
+  `start_hostaddr`/`end_hostaddr` (dotted). Three read-only appliance probes come first:
   1. `AND` in `WHERE`:
      `GET /rest/ip_block_subnet_list?WHERE=parent_site_name='<site>' AND parent_subnet_name='<parent>'&limit=5`
      (narrowed rows = composition works; 400/403 or an ignored condition = one filter stays the rule);
@@ -177,5 +189,3 @@ more.
   Ranges must compare the hex columns: dotted strings compare as text (`"9.0.0.1" > "10.0.0.1"`).
   Once answered: extend `LIST_SUBNETS_FILTERS`, relax `_select_optional_filter()` to the confirmed
   rule, and teach the mock's `WHERE` parser the new grammar.
-- `list subnets`' `subnet_start_ip_addr`/`subnet_end_ip_addr` names are an analogy to the
-  `subnet_*` fields of `ip_address_list`, not vendor-confirmed.
